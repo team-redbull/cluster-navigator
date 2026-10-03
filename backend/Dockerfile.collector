@@ -1,0 +1,18 @@
+# The collector: runs once per CronJob tick inside each cluster.
+# Build from the repository root, like the server image:
+#   docker build -t cluster-navigator-collector -f backend/Dockerfile.collector .
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /app
+
+COPY backend/requirements-collector.txt .
+RUN pip install --no-cache-dir -r requirements-collector.txt
+
+COPY backend/navigator/__init__.py navigator/__init__.py
+COPY backend/navigator/models navigator/models
+COPY backend/navigator/collector navigator/collector
+
+# Any non-root UID works, so OpenShift's restricted SCC can assign its own.
+USER 1001
+ENTRYPOINT ["python", "-m", "navigator.collector"]

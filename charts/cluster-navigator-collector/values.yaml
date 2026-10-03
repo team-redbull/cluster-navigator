@@ -1,0 +1,64 @@
+image:
+  repository: ghcr.io/team-redbull/cluster-navigator-collector
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Base URL of the central Cluster Navigator server. Required.
+navigatorUrl: ""
+
+# The bearer token the server expects on its ingest endpoint.
+ingestToken:
+  # Use an existing Secret (key below) instead of letting the chart create one.
+  existingSecret: ""
+  key: token
+  # Only used when existingSecret is empty. Keep it out of git.
+  value: ""
+
+# Base URL of Segments Manager. The collector asks it which segments this
+# cluster holds and sends them with its report. Empty: no segment is reported.
+segmentsManagerUrl: ""
+
+# How the cluster type is decided.
+#   auto      the collector works it out from the cluster's own APIs (recommended)
+#   generic | click | mce | kubevirt   force a type, for a cluster auto gets wrong
+clusterType: auto
+
+# Overrides the cluster name. Empty means it is read from the cluster's DNS config.
+clusterName: ""
+
+# Cron schedule, and how long one run may take.
+schedule: "*/30 * * * *"
+activeDeadlineSeconds: 300
+
+# TLS towards the server and Segments Manager. Point caBundle at a ConfigMap
+# holding the CA that signed their Route certificates, if the image's own
+# trust store lacks it.
+tls:
+  caBundle:
+    configMapName: ""
+    key: ca-bundle.crt
+  insecureSkipVerify: false
+
+# "Default" gives the pod the node's own /etc/resolv.conf. That is how the
+# collector reports the DNS servers the nodes use, with no privileged pod and
+# no hostPath. It also means in-cluster Service names do not resolve, so
+# navigatorUrl and segmentsManagerUrl must be Route or other external
+# hostnames. Set "ClusterFirst" only when they run in this same cluster and
+# you use their Service URLs;
+# the reported DNS servers will then be the cluster DNS, not the nodes'.
+dnsPolicy: Default
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+successfulJobsHistoryLimit: 1
+failedJobsHistoryLimit: 3
+nodeSelector: {}
+tolerations: []

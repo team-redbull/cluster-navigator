@@ -1,0 +1,71 @@
+name: Build and Push
+
+# Two images from this repo: the server (Dockerfile: API + built UI) and the
+# collector (backend/Dockerfile.collector). Each has its own chart in
+# team-redbull/redbull-platform, under gitops/charts/, and the shared workflow
+# writes the new image tag there on main. Argo CD deploys from that repo.
+
+on:
+  push:
+    branches: [ '**' ]
+  delete:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # A red test never becomes an image, and so never reaches redbull-platform's main.
+  test:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"        # what both images run
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+
+  build-server:
+    needs: [test]
+    uses: team-redbull/.github/.github/workflows/ghcr-build-push.yml@main
+    with:
+      image-name: cluster-navigator
+      dockerfile: Dockerfile
+      chart-repo: team-redbull/redbull-platform
+      helm-values-path: gitops/charts/cluster-navigator/values.yaml
+    secrets: inherit
+
+  build-collector:
+    # After the server, not beside it: both push to the same redbull-platform branch,
+    # and running them together makes them race on that push.
+    needs: [build-server]
+    uses: team-redbull/.github/.github/workflows/ghcr-build-push.yml@main
+    with:
+      image-name: cluster-navigator-collector
+      dockerfile: backend/Dockerfile.collector
+      chart-repo: team-redbull/redbull-platform
+      helm-values-path: gitops/charts/cluster-navigator-collector/values.yaml
+    secrets: inherit
+
+  cleanup-server-on-delete:
+    if: github.event_name == 'delete'
+    uses: team-redbull/.github/.github/workflows/ghcr-cleanup-on-delete.yml@main
+    with:
+      image-name: cluster-navigator
+    secrets: inherit
+
+  cleanup-collector-on-delete:
+    if: github.event_name == 'delete'
+    uses: team-redbull/.github/.github/workflows/ghcr-cleanup-on-delete.yml@main
+    with:
+      image-name: cluster-navigator-collector
+    secrets: inherit

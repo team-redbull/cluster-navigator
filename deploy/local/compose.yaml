@@ -1,0 +1,55 @@
+# A complete local stack with fake data. From this directory:
+#
+#   docker compose up -d --build
+#
+# then open http://localhost:8100. Sign in as admin / admin for the admin view.
+name: cluster-navigator-local
+
+services:
+  mongo:
+    image: mongo:7
+    ports: ["27020:27017"]
+
+  # Stands in for Segments Manager. Only the collectors (here: the seed) talk to it.
+  segments-manager:
+    image: python:3.12-slim
+    working_dir: /mock
+    volumes: ["./:/mock:ro"]
+    command: ["python", "mock_segments_manager.py"]
+    ports: ["8101:8000"]
+
+  navigator:
+    image: cluster-navigator:local
+    build:
+      context: ../..
+    ports: ["8100:8080"]
+    depends_on: [mongo]
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      INGEST_TOKEN: local-ingest-token
+      GRAFANA_URL_TEMPLATE: "https://grafana.{domain}/d/cluster-overview?var-cluster={name}"
+      # Sign-in. Locally there is no OpenShift, so two fixed users stand in:
+      #   admin / admin    member of ocp-admins, gets the admin view
+      #   viewer / viewer  signs in, but is in no admin group
+      AUTH_PROVIDER: dev
+      ADMIN_GROUPS: ocp-admins
+      DEV_USERS: '{"admin": {"password": "admin", "groups": ["ocp-admins"]}, "viewer": {"password": "viewer", "groups": []}}'
+      SESSION_SECRET: local-only-not-a-secret
+      COOKIE_SECURE: "false"
+      SERVICE_TOKENS: '{"workflows": {"token": "local-workflows-token", "roles": ["admin"]}}'
+
+  # Plays every collector once: looks up each fake cluster's segments in the mock
+  # Segments Manager, sends its report through the real ingest endpoint, then exits.
+  seed:
+    image: cluster-navigator:local
+    depends_on: [navigator, segments-manager]
+    volumes: ["./:/seed:ro"]
+    working_dir: /seed
+    environment:
+      PYTHONPATH: /app
+      NAVIGATOR_URL: http://navigator:8080
+      INGEST_TOKEN: local-ingest-token
+      SEGMENTS_MANAGER_URL: http://segments-manager:8000
+      MONGO_URI: mongodb://mongo:27017
+    command: ["python", "seed.py"]
+    restart: "no"

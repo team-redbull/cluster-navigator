@@ -1,0 +1,153 @@
+@import "tailwindcss";
+@import "@fontsource/fira-sans/latin-400.css";
+@import "@fontsource/fira-sans/latin-500.css";
+@import "@fontsource/fira-sans/latin-600.css";
+@import "@fontsource/fira-code/latin-400.css";
+@import "@fontsource/fira-code/latin-500.css";
+
+/*
+  Design tokens. Components use only the semantic names below, never raw
+  colours, so a rebrand is one edit here.
+  Fonts are bundled, not loaded from a CDN: this runs in air-gapped sites.
+
+  There is one theme, and it is dark: black and near-black surfaces, light
+  text and one red. Red is used in two ways, with a shade each:
+    brand    a fill with white text on it (the open menu item, the main button)
+    primary  red as text, a border or a ring, lighter so it stays readable
+  The side menu ("rail") is the darkest surface and has its own tokens.
+*/
+:root {
+  --bg: #0e0e0e;
+  --surface: #1a1a1a;
+  --surface-2: #262626;
+  --line: #2e2e2e;
+  --line-strong: #474747;
+  --fg: #f2f2f2;
+  --muted: #c2c2c2;
+  --subtle: #a6a6a6;
+  --brand: #e00000;
+  --brand-hover: #c20000;
+  --on-brand: #ffffff;
+  --primary: #ff6b6b;
+  --primary-soft: #3a1515;
+  --ring: #f2f2f2;
+  --tag: #f2f2f2;
+  --on-tag: #151515;
+  --ok: #4ade80;
+  --warn: #f5c26b;
+  --warn-soft: #3a2a0a;
+  --danger: #f87171;
+  --danger-soft: #3b1518;
+  --rail: #050505;
+  --rail-edge: #2a2a2a;
+  --rail-fg: #ffffff;
+  --rail-muted: #c8c8c8;
+  --rail-subtle: #b0b0b0;
+  --rail-line: #2a2a2a;
+  --rail-strong: #4a4a4a;
+  --rail-hover: #1f1f1f;
+  --shadow-lg: 0 16px 44px rgb(0 0 0 / 0.6);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-on-brand: var(--on-brand);
+  --color-primary: var(--primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-ring: var(--ring);
+  --color-tag: var(--tag);
+  --color-on-tag: var(--on-tag);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-rail: var(--rail);
+  --color-rail-edge: var(--rail-edge);
+  --color-rail-fg: var(--rail-fg);
+  --color-rail-muted: var(--rail-muted);
+  --color-rail-subtle: var(--rail-subtle);
+  --color-rail-line: var(--rail-line);
+  --color-rail-strong: var(--rail-strong);
+  --color-rail-hover: var(--rail-hover);
+  --shadow-pop: var(--shadow-lg);
+  --font-sans: "Fira Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@layer base {
+  /* Tells the browser to draw its own controls (select menus, scrollbars) dark too. */
+  html {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-bg text-fg font-sans antialiased;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  /* One focus style everywhere. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  button,
+  [role="button"],
+  select,
+  summary {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  ::selection {
+    background: var(--primary-soft);
+  }
+}
+
+@layer components {
+  .field {
+    @apply h-10 w-full rounded-md border border-line-strong bg-surface px-3 text-sm text-fg
+      placeholder:text-subtle transition-colors duration-150 hover:border-subtle;
+  }
+  .btn {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-medium
+      transition-colors duration-150 disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply bg-brand text-on-brand hover:bg-brand-hover;
+  }
+  .btn-ghost {
+    @apply border border-line-strong bg-surface text-fg hover:border-subtle;
+  }
+  /* Anything on the black side menu. The focus ring turns white there. */
+  .rail {
+    --ring: #ffffff;
+    @apply bg-rail text-rail-fg;
+  }
+  .btn-rail {
+    @apply border border-rail-strong text-rail-fg hover:bg-rail-hover;
+  }
+  .skeleton {
+    @apply animate-pulse rounded-md bg-surface-2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
