@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     public_url: str | None = None
     openshift_api_url: str = "https://kubernetes.default.svc"
     openshift_sa_dir: str = "/var/run/secrets/kubernetes.io/serviceaccount"
+    # An extra CA for the OAuth server's Route, when the site signs its router
+    # certificates with its own CA. Public CAs and the cluster CA are always trusted.
     openshift_ca_file: str | None = None
     group_cache_seconds: int = 60
 

@@ -3,6 +3,7 @@ import base64
 import csv
 import io
 import json
+import ssl
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -20,7 +21,7 @@ from navigator.models import (
 )
 from navigator.server import policy
 from navigator.server.app import create_app
-from navigator.server.auth.openshift import OpenShiftProvider
+from navigator.server.auth.openshift import OpenShiftProvider, trust
 from navigator.server.export import clusters_csv
 from navigator.server.filters import network_matches
 from navigator.server.merge import MergedCluster, MergeOptions, merge
@@ -467,6 +468,15 @@ def test_openshift_sign_in_and_group_lookup(tmp_path):
     assert eve_groups == frozenset()
     # The second lookup was answered from the cache.
     assert seen["group_calls"] == 1
+
+
+def test_sign_in_trusts_public_cas_besides_the_cluster_ca(tmp_path):
+    # The OAuth server sits behind the router, whose certificate is often a public
+    # one. Trusting the cluster CA alone failed the token exchange on a real cluster.
+    cluster_ca = tmp_path / "ca.crt"
+    cluster_ca.write_text(ssl.DER_cert_to_PEM_cert(trust().get_ca_certs(binary_form=True)[0]))
+    context = trust(str(cluster_ca), None)
+    assert context.cert_store_stats()["x509_ca"] > 100
 
 
 def test_redirect_flow_end_to_end(tmp_path):

@@ -18,10 +18,12 @@ the server so that anonymous visitors still get in as clients:
 """
 
 import logging
+import ssl
 import time
 from pathlib import Path
 from urllib.parse import urlencode
 
+import certifi
 import httpx
 
 from navigator.server.auth.base import AuthError, RedirectProvider
@@ -30,6 +32,22 @@ logger = logging.getLogger(__name__)
 
 DISCOVERY_PATH = "/.well-known/oauth-authorization-server"
 SCOPE = "user:info"
+
+
+def trust(*ca_files: str | None) -> ssl.SSLContext:
+    """The public CAs, plus each CA file given.
+
+    Two different certificates are in play. The API server's is signed by the
+    cluster's own CA. The OAuth server is reached through the router, whose
+    certificate is often a public one (sandbox clusters) or signed by the
+    site's CA (pass that as OPENSHIFT_CA_FILE). Trusting only the cluster CA
+    fails the token exchange, after the user has already typed a password.
+    """
+    context = ssl.create_default_context(cafile=certifi.where())
+    for ca_file in ca_files:
+        if ca_file:
+            context.load_verify_locations(cafile=ca_file)
+    return context
 
 
 class OpenShiftProvider(RedirectProvider):
@@ -45,8 +63,9 @@ class OpenShiftProvider(RedirectProvider):
         self._api_url = api_url.rstrip("/")
         self._sa_dir = Path(sa_dir)
         self._cache_seconds = group_cache_seconds
-        ca = ca_file or str(self._sa_dir / "ca.crt")
-        self._client = client or httpx.AsyncClient(verify=ca, timeout=10.0)
+        self._client = client or httpx.AsyncClient(
+            verify=trust(str(self._sa_dir / "ca.crt"), ca_file), timeout=10.0
+        )
         self._endpoints: dict | None = None
         self._groups: dict[str, tuple[float, frozenset[str]]] = {}
 
