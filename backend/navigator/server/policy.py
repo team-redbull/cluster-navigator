@@ -19,14 +19,14 @@ sections it should see with a new audience in ``sections.py``, and list its
 groups in ``<ROLE>_GROUPS``.
 
     ROLES='{"storage": {"clusterTypes": ["*"], "audiences": ["public", "storage"]}}'
-    STORAGE_GROUPS=storage-team
+    STORAGE_GROUPS='["storage-team"]'
 """
 
 import os
 from dataclasses import dataclass, field
 
 from navigator.models import ClusterType
-from navigator.server.settings import Settings, split_list
+from navigator.server.settings import Settings, json_list
 
 PUBLIC = "public"
 ADMIN = "admin"
@@ -87,7 +87,7 @@ def load_roles(settings: Settings, environ: dict[str, str] | None = None) -> dic
         "admin": {
             "clusterTypes": [ANY],
             "audiences": [ANY],
-            "groups": split_list(settings.admin_groups),
+            "groups": settings.admin_groups,
         },
     }
     for name, override in settings.json_setting("roles").items():
@@ -98,7 +98,7 @@ def load_roles(settings: Settings, environ: dict[str, str] | None = None) -> dic
         groups = definition.get("groups") or []
         env_groups = environ.get(f"{name.upper()}_GROUPS")
         if env_groups is not None and name != "admin":
-            groups = split_list(env_groups)
+            groups = json_list(env_groups, f"{name.upper()}_GROUPS")
         roles[name] = Role(
             name=name,
             cluster_types=_cluster_types(definition.get("clusterTypes") or []),

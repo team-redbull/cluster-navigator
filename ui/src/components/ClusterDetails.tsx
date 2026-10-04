@@ -2,6 +2,7 @@ import { CircleAlert, RefreshCw, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { api, type ClusterCard as Cluster } from "../api";
 import { useLoad } from "../hooks";
+import { useSession } from "../session";
 import { DETAILS_ID } from "./ClusterCard";
 import { GrafanaLogo, LinkButton, OpenShiftLogo, VersionBadge } from "./parts";
 import { SectionView } from "./Sections";
@@ -19,7 +20,8 @@ interface Props {
  * Escape, and puts focus back where it was when it closes.
  */
 export function ClusterDetails({ id, cluster, onClose }: Props) {
-  const { data, loading, error, reload } = useLoad(`cluster:${id}`, (signal) => api.cluster(id, signal));
+  const { viewer } = useSession();
+  const { data, loading, error, reload } = useLoad(`cluster|${id}|${viewer}`, (signal) => api.cluster(id, signal));
   const dialog = useRef<HTMLDialogElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
   const shown = data ?? cluster;

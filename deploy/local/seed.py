@@ -107,6 +107,7 @@ def build(
         api_url=f"https://api.{fqdn}:6443",
         router_lb=[f"{net}.100"],
         api_addresses=[] if errors else [f"{net}.101"],
+        network=fixtures.cluster_network(name),
         dns=DnsConfig(servers=["10.50.1.5", "10.50.1.6"], search_domains=[fqdn, fixtures.DOMAIN]),
         nodes=nodes,
         resources=Resources(

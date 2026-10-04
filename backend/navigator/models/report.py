@@ -89,6 +89,9 @@ class ClusterReport(Model):
     api_url: str | None = None
     router_lb: list[str] = Field(default_factory=list)
     api_addresses: list[str] = Field(default_factory=list)
+    # The network the cluster belongs to, where a site runs several separate
+    # networks. Set by whoever installs the collector, not detected.
+    network: str | None = None
     # Looked up in Segments Manager by the collector, by cluster name.
     site: str | None = None
     segments: list[SegmentReport] = Field(default_factory=list)

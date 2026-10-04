@@ -2,10 +2,10 @@
 
 import json
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import SecretStr, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -21,12 +21,6 @@ class Settings(BaseSettings):
     # Collectors authenticate to the ingest endpoint with this bearer token.
     ingest_token: SecretStr
 
-    # Segment types shown on the cluster box. The rest (inventory, PXE) are
-    # infrastructure networks and appear only in the details. The segments
-    # themselves arrive in each cluster's report; the server never talks to
-    # Segments Manager.
-    primary_segment_types: str = "UPI,HC,MCE,HUB"
-
     # A cluster whose last report is older than this is shown as stale.
     stale_after_seconds: int = 5400
 
@@ -34,8 +28,11 @@ class Settings(BaseSettings):
     grafana_url_template: str | None = None
 
     # Who may see what. See navigator/server/policy.py.
-    auth_provider: Literal["none", "dev", "openshift"] = "none"
-    admin_groups: str = ""
+    # How users sign in. The chart always runs "openshift". "dev" (fixed users)
+    # and "none" (no sign-in) are for local runs and tests.
+    auth_provider: Literal["none", "dev", "openshift"] = "openshift"
+    # A JSON list: ADMIN_GROUPS='["ocp-admins", "platform-team"]'
+    admin_groups: Annotated[list[str], NoDecode] = []
     roles: str | None = None
     dev_users: str | None = None
     service_tokens: str | None = None
@@ -55,8 +52,10 @@ class Settings(BaseSettings):
     # Where the built UI lives. Empty disables serving it.
     ui_dir: str | None = None
 
-    def primary_types(self) -> frozenset[str]:
-        return frozenset(split_list(self.primary_segment_types, upper=True))
+    @field_validator("admin_groups", mode="before")
+    @classmethod
+    def _admin_groups(cls, value: object) -> object:
+        return json_list(value, "ADMIN_GROUPS") if isinstance(value, str) else value
 
     def json_setting(self, name: str) -> dict:
         raw = getattr(self, name)
@@ -71,9 +70,17 @@ class Settings(BaseSettings):
         return value
 
 
-def split_list(raw: str | None, *, upper: bool = False) -> list[str]:
-    items = [item.strip() for item in (raw or "").split(",")]
-    return [item.upper() if upper else item for item in items if item]
+def json_list(raw: str | None, name: str) -> list[str]:
+    """A list setting, written as a JSON array: '["ocp-admins", "platform-team"]'. Blank means empty."""
+    if not raw or not raw.strip():
+        return []
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f'{name} must be a JSON list, for example ["ocp-admins"]: {exc}') from exc
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f'{name} must be a JSON list of strings, for example ["ocp-admins"]')
+    return [item.strip() for item in value if item.strip()]
 
 
 @lru_cache

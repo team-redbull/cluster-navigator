@@ -59,6 +59,7 @@ class Collector:
         *,
         type_override: str | None = None,
         name_override: str | None = None,
+        network: str | None = None,
         resolver: Callable[[str], list[str]] = resolve_host,
         dns_reader: Callable[[], DnsConfig] = read_resolv_conf,
         segments_manager_url: str | None = None,
@@ -69,6 +70,7 @@ class Collector:
         self._segments_client = segments_client
         self._type_override = type_override
         self._name_override = name_override
+        self._network = (network or "").strip() or None
         self._resolve = resolver
         self._read_dns = dns_reader
         self._errors: list[CollectorError] = []
@@ -132,6 +134,7 @@ class Collector:
             api_url=api_url,
             router_lb=router_lb,
             api_addresses=self._step("apiAddresses", lambda: self._resolve_url(api_url), []),
+            network=self._network,
             site=site,
             segments=segments,
             dns=self._step("dns", self._read_dns, None),

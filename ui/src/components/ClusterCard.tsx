@@ -14,6 +14,18 @@ const STATUS_NOTE: Partial<Record<ClusterStatus, { label: string; hint: string; 
   },
 };
 
+/** A one-word fact, such as the cluster's type or network: plain text, not an address. */
+function Label({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex gap-3">
+      <dt className="w-20 shrink-0 text-subtle">{label}</dt>
+      <dd className="truncate leading-6" title={value}>
+        {value}
+      </dd>
+    </div>
+  );
+}
+
 function Fact({ label, values, className = "" }: { label: string; values: string[]; className?: string }) {
   return (
     <div className={`flex gap-3 ${className}`}>
@@ -44,7 +56,7 @@ interface Props {
   onToggle: () => void;
 }
 
-/** The cluster box: name, version, segment, router address, parent MCE and links. */
+/** The cluster box: name, version, segment, router address, parent MCE, network and links. */
 export function ClusterCard({ cluster, typeLabel, canSeeMce, selected, onToggle }: Props) {
   const note = STATUS_NOTE[cluster.status];
   // A hosted cluster runs under an MCE, so it shows which one, to those allowed to know.
@@ -110,12 +122,9 @@ export function ClusterCard({ cluster, typeLabel, canSeeMce, selected, onToggle 
         <Fact label="Segment" values={cluster.segments} className={note ? "pr-16" : ""} />
         <Fact label="Router LB" values={cluster.routerLb} />
         {showMce && <Fact label="MCE" values={cluster.mce ? [cluster.mce] : []} />}
-        {typeLabel && (
-          <div className="flex gap-3">
-            <dt className="w-20 shrink-0 text-subtle">Type</dt>
-            <dd className="leading-6">{typeLabel}</dd>
-          </div>
-        )}
+        {/* Only where networks are set: a site with one network has nothing to tell apart. */}
+        {cluster.network && <Label label="Network" value={cluster.network} />}
+        {typeLabel && <Label label="Type" value={typeLabel} />}
       </dl>
 
       {hasLinks && (

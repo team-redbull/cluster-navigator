@@ -7,6 +7,7 @@ Environment:
                                  segments are looked up. Empty: no segments reported.
   CLUSTER_TYPE                   auto (default), generic, click, mce or kubevirt.
   CLUSTER_NAME                   Overrides the detected cluster name.
+  CLUSTER_NETWORK                The network this cluster belongs to. Empty: none.
   TLS_CA_FILE                    CA bundle used to verify the server's and
                                  Segments Manager's certificates.
   TLS_INSECURE_SKIP_VERIFY       true to skip TLS verification (not for production).
@@ -61,6 +62,7 @@ def main() -> int:
             kube,
             type_override=os.environ.get("CLUSTER_TYPE"),
             name_override=os.environ.get("CLUSTER_NAME"),
+            network=os.environ.get("CLUSTER_NETWORK"),
             segments_manager_url=os.environ.get("SEGMENTS_MANAGER_URL", "").strip() or None,
             segments_client=segments_client,
         ).collect()

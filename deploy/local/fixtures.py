@@ -51,6 +51,17 @@ UPI = [
 
 SITE_PREFIX = {"site1": "192.10", "site2": "193.51", "site3": "194.52"}
 
+# The network each cluster's collector chart names. A site can run several, so
+# it is not the same as the site. One cluster has none set, as a cluster whose
+# chart leaves it empty would.
+NO_NETWORK = {"ocp4-prod-legacy-site3"}
+
+
+def cluster_network(name: str) -> str | None:
+    if name in NO_NETWORK:
+        return None
+    return "lab-net" if name.startswith(("ocp4-dev-", "ocp4-prep-")) else "prod-net"
+
 
 def network(site: str, octet: int) -> str:
     return f"{SITE_PREFIX[site]}.{octet}"

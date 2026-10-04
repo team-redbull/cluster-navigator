@@ -144,6 +144,12 @@ def test_name_can_be_overridden():
     assert collect(fx.standalone(), name_override="Custom-Name").name == "custom-name"
 
 
+def test_network_is_what_the_chart_sets():
+    assert collect(fx.standalone(), network=" prod-net ").network == "prod-net"
+    assert collect(fx.standalone(), network="").network is None
+    assert collect(fx.standalone()).network is None
+
+
 def test_not_openshift_fails_loudly():
     with pytest.raises(CollectionError):
         collect({})

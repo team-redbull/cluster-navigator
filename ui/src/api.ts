@@ -24,6 +24,8 @@ export interface ClusterCard {
   name: string;
   type: ClusterType;
   site: string | null;
+  /** The network it belongs to, as set in its collector's chart. */
+  network: string | null;
   status: ClusterStatus;
   openshiftVersion: string | null;
   segments: string[];
@@ -68,6 +70,7 @@ export interface ClusterDetail extends ClusterCard {
 
 export interface Facets {
   sites: string[];
+  networks: string[];
   mces: string[];
   versions: string[];
 }
@@ -81,6 +84,8 @@ export interface ClusterList {
 
 export interface ClusterFilters {
   q: string;
+  /** An IP address, a CIDR, or part of one. */
+  segment: string;
   network: string;
   site: string;
   mce: string;
@@ -121,13 +126,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.status === 204 ? (undefined as T) : ((await response.json()) as T);
 }
 
-/** The query string for a cluster list. `type` null means every type the caller may see. */
-function listQuery(type: ClusterType | null, filters: ClusterFilters): string {
+/**
+ * The query string for a cluster list. `type` null means every type the caller
+ * may see. Sorted, so the same list always gives the same string: it is also
+ * the list's cache key.
+ */
+export function listQuery(type: ClusterType | null, filters: ClusterFilters): string {
   const params = new URLSearchParams();
   if (type) params.set("type", type);
   for (const [key, value] of Object.entries(filters)) {
     if (value) params.set(key, value);
   }
+  params.sort();
   return params.toString();
 }
 

@@ -7,6 +7,7 @@ interface Props {
   filters: ClusterFilters;
   facets: Facets | null;
   showMce: boolean;
+  showNetwork: boolean;
   /** Given in the all-clusters view: offers a filter by cluster type. */
   types?: TypeInfo[];
   type?: string;
@@ -103,7 +104,17 @@ function SelectFilter({
 
 const plain = (values: string[]) => values.map((value) => ({ value, label: value }));
 
-export function FilterBar({ filters, facets, showMce, types, type = "", onTypeChange, onChange, onClear }: Props) {
+export function FilterBar({
+  filters,
+  facets,
+  showMce,
+  showNetwork,
+  types,
+  type = "",
+  onTypeChange,
+  onChange,
+  onClear,
+}: Props) {
   const active = Object.values(filters).some(Boolean) || Boolean(type);
   return (
     <section aria-label="Filters" className="rounded-[10px] border border-line bg-surface p-3 sm:p-3.5">
@@ -120,12 +131,12 @@ export function FilterBar({ filters, facets, showMce, types, type = "", onTypeCh
         </div>
         <div className="min-w-0 flex-[2_1_10.5rem]">
           <TextFilter
-            id="filter-network"
-            label="Network"
-            value={filters.network}
+            id="filter-segment"
+            label="Segment"
+            value={filters.segment}
             placeholder="IP or CIDR"
             mono
-            onCommit={(network) => onChange({ network })}
+            onCommit={(segment) => onChange({ segment })}
           />
         </div>
         {types && onTypeChange && (
@@ -136,6 +147,17 @@ export function FilterBar({ filters, facets, showMce, types, type = "", onTypeCh
               value={type}
               options={types.map((entry) => ({ value: entry.id, label: entry.label }))}
               onChange={onTypeChange}
+            />
+          </div>
+        )}
+        {showNetwork && (
+          <div className="min-w-0 flex-[1_1_7rem]">
+            <SelectFilter
+              id="filter-network"
+              label="Network"
+              value={filters.network}
+              options={plain(facets?.networks ?? [])}
+              onChange={(network) => onChange({ network })}
             />
           </div>
         )}

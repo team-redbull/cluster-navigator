@@ -21,11 +21,12 @@ from navigator.models import (
 )
 from navigator.server import policy
 from navigator.server.app import create_app
+from navigator.server.auth import build_provider
 from navigator.server.auth.openshift import OpenShiftProvider, trust
 from navigator.server.export import clusters_csv
-from navigator.server.filters import network_matches
+from navigator.server.filters import segment_matches
 from navigator.server.merge import MergedCluster, MergeOptions, merge
-from navigator.server.settings import Settings
+from navigator.server.settings import Settings, json_list
 from navigator.server.store import MemoryStore, StoredReport
 from navigator.server.views import ClusterCard, ClusterStatus
 
@@ -56,7 +57,7 @@ def seg(cidr, seg_type, site="site1", vlan=100) -> SegmentReport:
 def reports():
     return [
         stored(report(
-            "ocp4-prod-core-site1", site="site1", segments=[seg("192.10.5.0/24", "UPI", vlan=105)],
+            "ocp4-prod-core-site1", site="site1", network="prod-net", segments=[seg("192.10.5.0/24", "UPI", vlan=105)],
             router_lb=["192.10.5.100"], nodes=[NodeReport(name="master-0", internal_ip="192.10.5.11")],
             console_url="https://console-openshift-console.apps.ocp4-prod-core-site1.example.com",
         )),
@@ -88,6 +89,12 @@ def test_segments_and_site_come_from_the_report():
     card = merged()["ocp4-prod-core-site1"].card
     assert (card.site, card.segments, card.status) == ("site1", ["192.10.5.0/24"], ClusterStatus.REPORTING)
     assert card.router_lb == ["192.10.5.100"]
+
+
+def test_network_comes_from_the_report():
+    cards = {name: c.card for name, c in merged().items()}
+    assert cards["ocp4-prod-core-site1"].network == "prod-net"
+    assert cards["ocp4-prod-tomer-site1-a"].network is None
 
 
 def test_parent_mce_comes_from_the_mce_report():
@@ -166,8 +173,8 @@ def test_grafana_link_template():
         ("", True),
     ],
 )
-def test_network_filter(needle, expected):
-    assert network_matches(needle, merged()["ocp4-prod-core-site1"]) is expected
+def test_segment_filter(needle, expected):
+    assert segment_matches(needle, merged()["ocp4-prod-core-site1"]) is expected
 
 
 # --- policy ------------------------------------------------------------------
@@ -177,8 +184,29 @@ def settings(**overrides) -> Settings:
     return Settings(_env_file=None, ingest_token="ingest-secret", cookie_secure=False, **overrides)
 
 
+def test_group_lists_are_json(monkeypatch):
+    monkeypatch.setenv("ADMIN_GROUPS", '["ocp-admins", " platform-team "]')
+    assert settings().admin_groups == ["ocp-admins", "platform-team"]
+    monkeypatch.setenv("ADMIN_GROUPS", "")
+    assert settings().admin_groups == []
+    # The old comma-separated form is refused at startup, with the expected form in the message.
+    monkeypatch.setenv("ADMIN_GROUPS", "ocp-admins,platform-team")
+    with pytest.raises(ValueError, match="ADMIN_GROUPS must be a JSON list"):
+        settings()
+    with pytest.raises(ValueError, match="STORAGE_GROUPS must be a JSON list"):
+        json_list("storage-team", "STORAGE_GROUPS")
+    with pytest.raises(ValueError, match="of strings"):
+        json_list('{"a": 1}', "STORAGE_GROUPS")
+
+
+def test_openshift_is_the_default_and_says_what_to_do_outside_a_cluster(tmp_path):
+    assert settings().auth_provider == "openshift"
+    with pytest.raises(RuntimeError, match="set AUTH_PROVIDER=dev or none"):
+        build_provider(settings(openshift_sa_dir=str(tmp_path)))
+
+
 def test_anonymous_is_a_client():
-    roles = policy.load_roles(settings(admin_groups="ocp-admins"), environ={})
+    roles = policy.load_roles(settings(admin_groups=["ocp-admins"]), environ={})
     principal = policy.resolve(roles)
     assert principal.roles == ("client",)
     assert principal.cluster_types == {ClusterType.GENERIC, ClusterType.CLICK}
@@ -186,7 +214,7 @@ def test_anonymous_is_a_client():
 
 
 def test_admin_group_grants_everything():
-    roles = policy.load_roles(settings(admin_groups="ocp-admins, platform-team"), environ={})
+    roles = policy.load_roles(settings(admin_groups=["ocp-admins", "platform-team"]), environ={})
     principal = policy.resolve(roles, username="dana", groups=frozenset({"platform-team"}), via="session")
     assert principal.roles == ("admin", "client")
     assert principal.cluster_types == set(ClusterType)
@@ -194,15 +222,15 @@ def test_admin_group_grants_everything():
 
 
 def test_signed_in_without_a_group_stays_a_client():
-    roles = policy.load_roles(settings(admin_groups="ocp-admins"), environ={})
+    roles = policy.load_roles(settings(admin_groups=["ocp-admins"]), environ={})
     principal = policy.resolve(roles, username="guest", groups=frozenset(), via="session")
     assert principal.roles == ("client",) and principal.authenticated
 
 
 def test_a_new_role_is_configuration_only():
     roles = policy.load_roles(
-        settings(admin_groups="ocp-admins", roles='{"storage": {"clusterTypes": ["*"], "audiences": ["public", "storage"]}}'),
-        environ={"STORAGE_GROUPS": "storage-team"},
+        settings(admin_groups=["ocp-admins"], roles='{"storage": {"clusterTypes": ["*"], "audiences": ["public", "storage"]}}'),
+        environ={"STORAGE_GROUPS": '["storage-team"]'},
     )
     assert policy.all_groups(roles) == {"ocp-admins", "storage-team"}
     principal = policy.resolve(roles, username="sam", groups=frozenset({"storage-team"}), via="session")
@@ -224,7 +252,7 @@ def client():
     store = MemoryStore()
     app = create_app(
         settings(
-            auth_provider="dev", admin_groups="ocp-admins", dev_users=DEV_USERS,
+            auth_provider="dev", admin_groups=["ocp-admins"], dev_users=DEV_USERS,
             service_tokens='{"workflows": {"token": "wf-token", "roles": ["admin"]}}',
             stale_after_seconds=10**9,
         ),
@@ -294,9 +322,9 @@ def test_csv_export_follows_the_list(client):
     # A client gets the clusters they may see, and no MCE column.
     response, rows = table()
     assert rows == [
-        ["name", "version", "segment", "router_lb"],
-        ["ocp4-prod-core-site1", "4.16.21", "192.10.5.0/24", "192.10.5.100"],
-        ["ocp4-prod-tomer-site1-a", "4.16.18", "192.10.20.0/24", ""],
+        ["name", "version", "segment", "router_lb", "network"],
+        ["ocp4-prod-core-site1", "4.16.21", "192.10.5.0/24", "192.10.5.100", "prod-net"],
+        ["ocp4-prod-tomer-site1-a", "4.16.18", "192.10.20.0/24", "", ""],
     ]
     assert "mce" not in response.text
     assert 'filename="clusters-all-' in response.headers["content-disposition"]
@@ -306,8 +334,8 @@ def test_csv_export_follows_the_list(client):
     login(client)
     response, rows = table(type="click")
     assert rows == [
-        ["name", "version", "segment", "router_lb", "mce"],
-        ["ocp4-prod-tomer-site1-a", "4.16.18", "192.10.20.0/24", "", "ocp4-prod-mce-site1-a"],
+        ["name", "version", "segment", "router_lb", "network", "mce"],
+        ["ocp4-prod-tomer-site1-a", "4.16.18", "192.10.20.0/24", "", "", "ocp4-prod-mce-site1-a"],
     ]
     assert 'filename="clusters-click-' in response.headers["content-disposition"]
     assert [row[0] for row in table(q="core")[1][1:]] == ["ocp4-prod-core-site1"]
@@ -320,7 +348,7 @@ def test_csv_cells_cannot_run_as_formulas():
         openshift_version="4.16.1", segments=["10.0.0.0/24", "10.0.1.0/24"], router_lb=["10.0.0.5"],
     )
     rows = list(csv.reader(io.StringIO(clusters_csv([card], include_mce=True))))
-    assert rows[1] == ["'=cmd()", "4.16.1", "10.0.0.0/24; 10.0.1.0/24", "10.0.0.5", ""]
+    assert rows[1] == ["'=cmd()", "4.16.1", "10.0.0.0/24; 10.0.1.0/24", "10.0.0.5", "", ""]
 
 
 def test_admin_sees_everything(client):
@@ -375,7 +403,9 @@ def test_list_filters_and_facets(client):
     assert names(type="click", mce="ocp4-prod-mce-site1-a") == ["ocp4-prod-tomer-site1-a"]
     assert names(type="click", mce="some-other-mce") == []
     assert names(site="site1") == ["ocp4-prod-core-site1", "ocp4-prod-mce-site1-a", "ocp4-prod-tomer-site1-a"]
-    assert names(network="192.10.20.44") == ["ocp4-prod-tomer-site1-a"]
+    assert names(segment="192.10.20.44") == ["ocp4-prod-tomer-site1-a"]
+    assert names(network="prod-net") == ["ocp4-prod-core-site1"]
+    assert names(network="lab-net") == []
     assert names(q="CORE") == ["ocp4-prod-core-site1"]
     assert names(version="4.17") == []
     assert names(status="stale") == []
@@ -386,6 +416,9 @@ def test_list_filters_and_facets(client):
     assert listing["facets"]["sites"] == ["site1"]
     assert listing["facets"]["mces"] == ["ocp4-prod-mce-site1-a"]
     assert listing["facets"]["versions"] == ["4.16"]
+    # Only clusters whose chart names a network add to the network options.
+    assert listing["facets"]["networks"] == []
+    assert client.get("/api/v1/clusters").json()["facets"]["networks"] == ["prod-net"]
 
 
 def test_reinstalled_cluster_replaces_its_old_report(client):
@@ -491,7 +524,7 @@ def test_redirect_flow_end_to_end(tmp_path):
             return frozenset({"ocp-admins"}) & wanted
 
     provider = FakeOpenShift(api_url="https://kube", sa_dir=str(_sa_dir(tmp_path)), client=httpx.AsyncClient())
-    app = create_app(settings(auth_provider="openshift", admin_groups="ocp-admins"), store=MemoryStore(), provider=provider)
+    app = create_app(settings(auth_provider="openshift", admin_groups=["ocp-admins"]), store=MemoryStore(), provider=provider)
     with TestClient(app, follow_redirects=False) as client:
         assert client.get("/api/v1/me").json()["loginMode"] == "redirect"
         start = client.get("/api/v1/auth/login", params={"return_to": "/mce"})

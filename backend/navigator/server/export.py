@@ -19,7 +19,7 @@ def clusters_csv(cards: list[ClusterCard], *, include_mce: bool) -> str:
     """One row per cluster. The MCE column exists only for callers who may see it."""
     out = io.StringIO()
     writer = csv.writer(out)
-    header = ["name", "version", "segment", "router_lb"]
+    header = ["name", "version", "segment", "router_lb", "network"]
     if include_mce:
         header.append("mce")
     writer.writerow(header)
@@ -29,6 +29,7 @@ def clusters_csv(cards: list[ClusterCard], *, include_mce: bool) -> str:
             _cell(card.openshift_version),
             _cell("; ".join(card.segments)),
             _cell("; ".join(card.router_lb)),
+            _cell(card.network),
         ]
         if include_mce:
             row.append(_cell(card.mce))

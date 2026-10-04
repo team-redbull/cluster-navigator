@@ -1,17 +1,23 @@
 import { CircleAlert, Download, RefreshCw, SearchX } from "lucide-react";
 import { useCallback, useEffect, useMemo } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router-dom";
-import { api, ApiError, exportUrl, type ClusterFilters, type ClusterType } from "../api";
-import { useLoad } from "../hooks";
+import { api, ApiError, exportUrl, listQuery, type ClusterFilters, type ClusterType } from "../api";
+import { preload, useLoad } from "../hooks";
 import { useSession } from "../session";
 import { ALL, ALL_LABEL } from "../types";
 import { ClusterCard } from "./ClusterCard";
 import { ClusterDetails } from "./ClusterDetails";
 import { FilterBar } from "./FilterBar";
 
-const FILTER_KEYS = ["q", "network", "site", "mce", "version", "status", "type"] as const;
+const FILTER_KEYS = ["q", "segment", "network", "site", "mce", "version", "status", "type"] as const;
 // The list reloads by itself this often while the page is in view, so there is no refresh button.
 const REFRESH_MS = 60_000;
+const NO_FILTERS: ClusterFilters = { q: "", segment: "", network: "", site: "", mce: "", version: "", status: "" };
+
+/** The cache key of one list: the page, the query, and who is looking. */
+function listKey(page: string | undefined, type: ClusterType | null, filters: ClusterFilters, viewer: string): string {
+  return `clusters|${page}|${listQuery(type, filters)}|${viewer}`;
+}
 
 function Message({
   icon: Icon,
@@ -36,7 +42,7 @@ function Message({
 
 export function ClustersPage() {
   const { type: typeParam } = useParams();
-  const { me, setCounts, counts, refresh } = useSession();
+  const { me, viewer, setCounts, counts, refresh } = useSession();
   const [params, setParams] = useSearchParams();
 
   // The page is either one cluster type, or "all": every type this user may
@@ -55,6 +61,7 @@ export function ClustersPage() {
   const filters = useMemo<ClusterFilters>(
     () => ({
       q: params.get("q") ?? "",
+      segment: params.get("segment") ?? "",
       network: params.get("network") ?? "",
       site: params.get("site") ?? "",
       // A link shared by an admin may carry an MCE filter this user cannot use.
@@ -83,7 +90,7 @@ export function ClustersPage() {
     [setParams],
   );
 
-  const key = `${typeParam}|${type}|${JSON.stringify(filters)}|${me?.username ?? ""}`;
+  const key = listKey(typeParam, type, filters, viewer);
   const { data, loading, error, reload } = useLoad(
     key,
     async (signal) => {
@@ -103,6 +110,17 @@ export function ClustersPage() {
   useEffect(() => {
     if (data) setCounts(data.counts);
   }, [data, setCounts]);
+
+  // Once this page has its data, load every menu entry in the background, so
+  // the first visit to each is instant as well. Each refreshes when visited.
+  const loaded = data !== null;
+  useEffect(() => {
+    if (!me || !loaded) return;
+    for (const page of [ALL, ...me.types.map((entry) => entry.id)]) {
+      const pageType = page === ALL ? null : (page as ClusterType);
+      preload(listKey(page, pageType, NO_FILTERS, viewer), () => api.clusters(pageType, NO_FILTERS));
+    }
+  }, [me, viewer, loaded]);
 
   if (!me) return null;
   if (!isAll && !type) {
@@ -126,6 +144,8 @@ export function ClustersPage() {
   const heading = isAll ? ALL_LABEL : typeInfo!.label;
   // The MCE filter is offered where there is an MCE to choose: on any page that lists hosted clusters.
   const showMce = canSeeMce && (Boolean(data?.facets.mces.length) || Boolean(filters.mce));
+  // Networks are set per cluster only at sites that run several. Elsewhere there is nothing to choose.
+  const showNetwork = Boolean(data?.facets.networks.length) || Boolean(filters.network);
   const total = isAll
     ? Object.values(counts).reduce((sum, count) => sum + (count ?? 0), 0)
     : counts[type!];
@@ -157,6 +177,7 @@ export function ClustersPage() {
         filters={filters}
         facets={data?.facets ?? null}
         showMce={showMce}
+        showNetwork={showNetwork}
         types={isAll ? me.types : undefined}
         type={isAll ? (type ?? "") : undefined}
         onTypeChange={(next) => update({ type: next, open: null })}
@@ -206,7 +227,7 @@ export function ClustersPage() {
               </button>
             }
           >
-            Try a different name or network, or widen the site and version filters.
+            Try a different name or segment, or widen the other filters.
           </Message>
         ) : (
           <Message icon={SearchX} title={isAll ? "No clusters yet" : `No ${heading} clusters yet`}>

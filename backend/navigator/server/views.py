@@ -23,6 +23,8 @@ class ClusterCard(Model):
     name: str
     type: ClusterType
     site: str | None = None
+    # The network it belongs to, as set in its collector's chart.
+    network: str | None = None
     status: ClusterStatus
     openshift_version: str | None = None
     segments: list[str] = Field(default_factory=list)
@@ -72,6 +74,7 @@ class ClusterDetail(ClusterCard):
 
 class Facets(Model):
     sites: list[str] = Field(default_factory=list)
+    networks: list[str] = Field(default_factory=list)
     mces: list[str] = Field(default_factory=list)
     versions: list[str] = Field(default_factory=list)
 

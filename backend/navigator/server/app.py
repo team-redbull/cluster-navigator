@@ -71,7 +71,6 @@ class Navigator:
         self.service_tokens: dict[str, dict] = settings.json_setting("service_tokens")
         self.merge_options = MergeOptions(
             stale_after=timedelta(seconds=settings.stale_after_seconds),
-            primary_segment_types=settings.primary_types(),
             grafana_url_template=settings.grafana_url_template,
         )
         self._snapshot: tuple[float, list[MergedCluster]] | None = None
@@ -167,8 +166,9 @@ def create_app(
         type: ClusterType | None = Query(default=None, description="Cluster type"),
         q: str | None = Query(default=None, description="Part of the cluster name"),
         site: str | None = None,
+        network: str | None = Query(default=None, description="The network the cluster belongs to"),
         mce: str | None = Query(default=None, description="Parent MCE name"),
-        network: str | None = Query(default=None, description="An IP address, a CIDR, or part of one"),
+        segment: str | None = Query(default=None, description="An IP address, a CIDR, or part of one"),
         version: str | None = Query(default=None, description="OpenShift minor version, for example 4.16"),
         status: ClusterStatus | None = None,
     ) -> Selection:
@@ -178,7 +178,8 @@ def create_app(
         allowed = visible(await nav.clusters(), principal)
         scoped = [c for c in allowed if type is None or c.card.type == type]
         filters = Filters(
-            q=q, site=site, mce=mce, network=network, version=version, status=status.value if status else None
+            q=q, site=site, network=network, mce=mce, segment=segment, version=version,
+            status=status.value if status else None,
         )
         return Selection(
             principal=principal,
@@ -228,6 +229,7 @@ def create_app(
 
         facets = Facets(
             sites=sorted({c.card.site for c in scoped if c.card.site}),
+            networks=sorted({c.card.network for c in scoped if c.card.network}),
             mces=sorted({c.card.mce for c in scoped if c.card.mce}),
             versions=sorted(
                 {v for c in scoped if (v := minor_version(c.card.openshift_version))},

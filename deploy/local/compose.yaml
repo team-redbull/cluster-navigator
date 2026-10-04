@@ -32,7 +32,7 @@ services:
       #   admin / admin    member of ocp-admins, gets the admin view
       #   viewer / viewer  signs in, but is in no admin group
       AUTH_PROVIDER: dev
-      ADMIN_GROUPS: ocp-admins
+      ADMIN_GROUPS: '["ocp-admins"]'
       DEV_USERS: '{"admin": {"password": "admin", "groups": ["ocp-admins"]}, "viewer": {"password": "viewer", "groups": []}}'
       SESSION_SECRET: local-only-not-a-secret
       COOKIE_SECURE: "false"

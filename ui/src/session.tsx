@@ -1,8 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, loginRedirectUrl, type ClusterType, type Me } from "./api";
+import { clearLoadCache } from "./hooks";
 
 interface Session {
   me: Me | null;
+  /** Who is looking and with which roles. Part of every cache key, so data is never reused across access levels. */
+  viewer: string;
   loading: boolean;
   error: string | null;
   counts: Partial<Record<ClusterType, number>>;
@@ -50,13 +53,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await api.logout();
+    clearLoadCache();
     setCounts({});
     await refresh();
   }, [refresh]);
 
+  const viewer = me ? `${me.username ?? ""}|${me.roles.join(",")}` : "";
+
   const value = useMemo<Session>(
     () => ({
       me,
+      viewer,
       loading,
       error,
       counts,
@@ -67,11 +74,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       loginOpen,
       closeLogin: () => setLoginOpen(false),
       completeLogin: (next: Me) => {
+        clearLoadCache();
         setMe(next);
         setLoginOpen(false);
       },
     }),
-    [me, loading, error, counts, refresh, signIn, signOut, loginOpen],
+    [me, viewer, loading, error, counts, refresh, signIn, signOut, loginOpen],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

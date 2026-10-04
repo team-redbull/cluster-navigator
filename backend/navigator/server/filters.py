@@ -10,8 +10,9 @@ from navigator.server.merge import MergedCluster
 class Filters:
     q: str | None = None
     site: str | None = None
-    mce: str | None = None
     network: str | None = None
+    mce: str | None = None
+    segment: str | None = None
     version: str | None = None
     status: str | None = None
 
@@ -31,8 +32,8 @@ def _addresses(cluster: MergedCluster) -> list[str]:
     return addresses
 
 
-def network_matches(needle: str, cluster: MergedCluster) -> bool:
-    """Match a cluster by network.
+def segment_matches(needle: str, cluster: MergedCluster) -> bool:
+    """Match a cluster by its segments and addresses.
 
     * an IP address matches the cluster whose segment contains it, or that
       uses it as a router, API or node address
@@ -84,12 +85,14 @@ def matches(cluster: MergedCluster, filters: Filters) -> bool:
         return False
     if filters.site and card.site != filters.site:
         return False
+    if filters.network and card.network != filters.network:
+        return False
     if filters.mce and card.mce != filters.mce:
         return False
     if filters.version and minor_version(card.openshift_version) != filters.version:
         return False
     if filters.status and card.status.value != filters.status:
         return False
-    if filters.network and not network_matches(filters.network, cluster):
+    if filters.segment and not segment_matches(filters.segment, cluster):
         return False
     return True

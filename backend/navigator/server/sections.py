@@ -55,6 +55,7 @@ def _overview(d: SectionDef, c: MergedCluster, now: datetime) -> Section | None:
     return _kv(d, [
         KeyValue(label="Type", value=TYPE_LABELS[c.card.type]),
         KeyValue(label="Site", value=c.card.site),
+        KeyValue(label="Network", value=c.card.network),
         KeyValue(label="Parent MCE", value=c.card.mce, mono=True),
         KeyValue(label="OpenShift version", value=c.card.openshift_version, mono=True),
         KeyValue(label="Kubernetes version", value=report.kubernetes_version, mono=True),
@@ -66,7 +67,7 @@ def _overview(d: SectionDef, c: MergedCluster, now: datetime) -> Section | None:
     ])
 
 
-def _network(d: SectionDef, c: MergedCluster, now: datetime) -> Section | None:
+def _addresses(d: SectionDef, c: MergedCluster, now: datetime) -> Section | None:
     report = c.report
     dns = report.dns
     return _kv(d, [
@@ -194,7 +195,8 @@ def _hosted_clusters(d: SectionDef, c: MergedCluster, now: datetime) -> Section 
 # Order here is the order on screen: the compact blocks first, then the tables.
 SECTIONS: list[SectionDef] = [
     SectionDef("overview", "Overview", PUBLIC, _overview),
-    SectionDef("network", "Network", PUBLIC, _network),
+    # Not titled "Network": that is the network the cluster belongs to, in the overview.
+    SectionDef("addresses", "Addresses and DNS", PUBLIC, _addresses),
     SectionDef("resources", "Capacity", PUBLIC, _resources),
     SectionDef("identity", "Identity providers", PUBLIC, _identity),
     SectionDef("segments", "Segments", PUBLIC, _segments),

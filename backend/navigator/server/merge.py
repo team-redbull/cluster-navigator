@@ -23,11 +23,14 @@ from navigator.server.views import ClusterCard, ClusterStatus
 # How OpenShift marks a control plane that runs outside the cluster.
 HOSTED_TOPOLOGY = "External"
 
+# Segment types shown on the cluster box: the cluster-facing ones. The rest
+# (inventory, PXE) are infrastructure networks and appear only in the details.
+PRIMARY_SEGMENT_TYPES = frozenset({"UPI", "HC", "MCE", "HUB"})
+
 
 @dataclass(frozen=True)
 class MergeOptions:
     stale_after: timedelta = timedelta(minutes=90)
-    primary_segment_types: frozenset[str] = frozenset({"UPI", "HC", "MCE", "HUB"})
     grafana_url_template: str | None = None
 
 
@@ -58,9 +61,9 @@ def _render(template: str | None, **values: str | None) -> str | None:
     return template.format_map(_Missing({k: v or "" for k, v in values.items()}))
 
 
-def _primary(segments: list[SegmentReport], primary_types: frozenset[str]) -> list[str]:
+def _primary(segments: list[SegmentReport]) -> list[str]:
     """The segments shown on the box: the cluster-facing ones, not inventory or PXE."""
-    primary = [s.cidr for s in segments if (s.type or "").upper() in primary_types]
+    primary = [s.cidr for s in segments if (s.type or "").upper() in PRIMARY_SEGMENT_TYPES]
     return primary or [s.cidr for s in segments]
 
 
@@ -95,9 +98,10 @@ def merge(
                     name=report.name,
                     type=report.type,
                     site=report.site,
+                    network=report.network,
                     status=ClusterStatus.REPORTING if fresh else ClusterStatus.STALE,
                     openshift_version=report.openshift_version or (ref.version if ref else None),
-                    segments=_primary(report.segments, options.primary_segment_types),
+                    segments=_primary(report.segments),
                     router_lb=report.router_lb,
                     hosted=is_hosted,
                     mce=parent_name,
