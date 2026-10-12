@@ -1,4 +1,5 @@
 import { CircleAlert, RefreshCw, X } from "lucide-react";
+import { useState } from "react";
 import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { ClustersPage } from "./components/ClustersPage";
 import { Layout } from "./components/Layout";
@@ -23,6 +24,45 @@ function LoginFailedBanner() {
       <CircleAlert className="size-4 shrink-0" aria-hidden />
       <span className="flex-1">Sign-in did not complete. Try again, and contact the platform team if it keeps failing.</span>
       <button type="button" onClick={dismiss} aria-label="Dismiss" className="inline-flex size-9 items-center justify-center rounded-md hover:bg-danger/10">
+        <X className="size-4" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+const NO_ADMIN_DISMISSED_KEY = "navigator.noAdminDismissed";
+
+/**
+ * A signed-in user without the admin role still gets in, as a client. Say so,
+ * or it looks as if sign-in did nothing. Dismissed for the rest of the browser
+ * session, per user.
+ */
+function NoAdminBanner() {
+  const { me } = useSession();
+  const username = me?.authenticated ? me.username : null;
+  const [dismissed, setDismissed] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem(NO_ADMIN_DISMISSED_KEY);
+    } catch {
+      return null;
+    }
+  });
+  if (!username || me?.roles.includes("admin") || dismissed === username) return null;
+  const dismiss = () => {
+    setDismissed(username);
+    try {
+      sessionStorage.setItem(NO_ADMIN_DISMISSED_KEY, username);
+    } catch {
+      // Storage is blocked: it stays dismissed until the page reloads.
+    }
+  };
+  return (
+    <div role="status" className="flex items-center gap-3 bg-warn-soft px-4 py-3 text-sm text-warn sm:px-6">
+      <CircleAlert className="size-4 shrink-0" aria-hidden />
+      <span className="flex-1">
+        <strong className="font-semibold">{username}</strong> doesn't have permission to admin view
+      </span>
+      <button type="button" onClick={dismiss} aria-label="Dismiss" className="inline-flex size-9 items-center justify-center rounded-md hover:bg-warn/10">
         <X className="size-4" aria-hidden />
       </button>
     </div>
@@ -65,6 +105,7 @@ export function App() {
   return (
     <Layout>
       <LoginFailedBanner />
+      <NoAdminBanner />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/:type" element={<ClustersPage />} />
