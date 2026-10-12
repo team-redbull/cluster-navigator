@@ -517,7 +517,11 @@ Prerequisites:
 - **TLS.** The server trusts the public CAs, the cluster CA and, if set,
   `OPENSHIFT_CA_FILE`. The OAuth server is reached through the router. If the
   site signs router certificates with its own CA, pass that CA in
-  `OPENSHIFT_CA_FILE`.
+  `OPENSHIFT_CA_FILE`. The chart skips this check by default
+  (`auth.oauthInsecureSkipVerify: true`), because on-site router CAs change
+  too often to pin. The pod then sends its ServiceAccount token to the OAuth
+  server without checking who answers, so the network to the router must be
+  trusted.
 
 ### `dev`: fixed users
 
@@ -724,6 +728,7 @@ and maps are JSON. The full list, with defaults, is in
 | `DEV_USERS` | Users for `AUTH_PROVIDER=dev`, as JSON |
 | `PUBLIC_URL` | The public base URL, used to build the OAuth callback. The chart sets it from `route.host`. |
 | `OPENSHIFT_API_URL`, `OPENSHIFT_CA_FILE` | The API server, and an extra CA to trust for the OAuth route |
+| `OPENSHIFT_OAUTH_INSECURE_SKIP_VERIFY` | Do not verify the OAuth route's certificate. Default false. Only the token exchange is affected. |
 | `STALE_AFTER_SECONDS` | How long before a silent cluster is shown as stale. Default 5400. |
 | `GRAFANA_URL_TEMPLATE` | Where the **Moby** button on each box points. Placeholders `{name}`, `{domain}`, `{clusterId}`. |
 | `UI_DIR` | Where the built UI is. The image sets it. |
@@ -741,6 +746,7 @@ unset by default:
 | `secret.serviceTokens` | API tokens for machine callers, for example `workflows: {token: "<long-random>", roles: ["admin"]}` |
 | `auth.adminGroups` | OpenShift Groups whose members are admins. Check a group with `oc get group <name> -o jsonpath='{.users}'`. |
 | `auth.roles`, `auth.roleGroups` | More kinds of user. See [Adding a new kind of user](#adding-a-new-kind-of-user). |
+| `auth.oauthInsecureSkipVerify` | Default `true`: the OAuth server's certificate is not verified during the token exchange, since on-site router CAs are not in the pod's trust store and change too often to pin. The API server is still verified. Set `false` where the router certificate is trusted. |
 | `route.host` | The Route's host. Unset: OpenShift assigns one. The Route is always created, since OpenShift sign-in redirects back to it. |
 | `grafanaUrlTemplate` | Grafana link on every cluster box. Placeholders `{name}`, `{domain}`, `{clusterId}`. Unset: no link. |
 | `image.tag` | Unset: the chart's `appVersion` |
@@ -761,7 +767,7 @@ marked optional are unset by default and not listed there:
 | `clusterType` | `auto` (the default), or `generic`, `click`, `mce`, `kubevirt` to force a type |
 | `clusterName` | Optional. Overrides the name read from `DNS/cluster` |
 | `schedule` | Default every 30 minutes. Keep `staleAfterSeconds` on the server at about three intervals. |
-| `tls.caBundle.configMapName`, `tls.insecureSkipVerify` | TLS towards the server and Segments Manager. The first is optional: a ConfigMap with the CA that signed their Route certificates. |
+| `tls.insecureSkipVerify`, `tls.caBundle.configMapName` | TLS towards the server and Segments Manager. Not verified by default (`insecureSkipVerify: true`). To verify, set it to `false`; the CA bundle is then an optional ConfigMap with the CA that signed their Route certificates. |
 | `dnsPolicy` | `Default`, so the reported DNS servers are the node's. See [Collect](#1-collect-the-collector-in-each-cluster). |
 | `image.tag` | Optional. Unset: the chart's `appVersion` |
 | `imagePullSecrets`, `nodeSelector`, `tolerations` | Optional. The usual pod settings. |

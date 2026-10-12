@@ -36,6 +36,7 @@ def build_provider(settings: Settings) -> AuthProvider:
             api_url=settings.openshift_api_url,
             sa_dir=settings.openshift_sa_dir,
             ca_file=settings.openshift_ca_file,
+            oauth_insecure=settings.openshift_oauth_insecure_skip_verify,
             group_cache_seconds=settings.group_cache_seconds,
         )
     return NoAuth()

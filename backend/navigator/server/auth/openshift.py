@@ -15,6 +15,11 @@ the server so that anonymous visitors still get in as clients:
    ``oc adm groups sync`` or the group-sync operator, not by the login itself.
    The lookup is cached, so membership changes apply within
    ``group_cache_seconds``.
+
+The token exchange (step 3) goes to the OAuth server through the router. If
+the pod cannot verify the router's certificate and the site's CA keeps
+changing, ``oauth_insecure`` skips verification for that one call. The API
+server is always verified against the cluster CA.
 """
 
 import logging
@@ -57,8 +62,10 @@ class OpenShiftProvider(RedirectProvider):
         api_url: str,
         sa_dir: str,
         ca_file: str | None = None,
+        oauth_insecure: bool = False,
         group_cache_seconds: int = 60,
         client: httpx.AsyncClient | None = None,
+        oauth_client: httpx.AsyncClient | None = None,
     ) -> None:
         self._api_url = api_url.rstrip("/")
         self._sa_dir = Path(sa_dir)
@@ -66,6 +73,11 @@ class OpenShiftProvider(RedirectProvider):
         self._client = client or httpx.AsyncClient(
             verify=trust(str(self._sa_dir / "ca.crt"), ca_file), timeout=10.0
         )
+        if oauth_client is None and oauth_insecure:
+            logger.warning("OPENSHIFT_OAUTH_INSECURE_SKIP_VERIFY is set: the OAuth server's certificate is not checked")
+            oauth_client = httpx.AsyncClient(verify=False, timeout=10.0)
+        # Only the token exchange uses this one. Everything else goes to the API server.
+        self._oauth_client = oauth_client or self._client
         self._endpoints: dict | None = None
         self._groups: dict[str, tuple[float, frozenset[str]]] = {}
 
@@ -102,7 +114,7 @@ class OpenShiftProvider(RedirectProvider):
     async def exchange(self, *, code: str, redirect_uri: str) -> str:
         endpoints = await self._discover()
         try:
-            token_response = await self._client.post(
+            token_response = await self._oauth_client.post(
                 endpoints["token_endpoint"],
                 data={
                     "grant_type": "authorization_code",
@@ -159,6 +171,8 @@ class OpenShiftProvider(RedirectProvider):
 
     async def close(self) -> None:
         await self._client.aclose()
+        if self._oauth_client is not self._client:
+            await self._oauth_client.aclose()
 
 
 def _unverified_claims(token: str) -> dict:

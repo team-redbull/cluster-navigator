@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     # An extra CA for the OAuth server's Route, when the site signs its router
     # certificates with its own CA. Public CAs and the cluster CA are always trusted.
     openshift_ca_file: str | None = None
+    # Skip verifying the OAuth server's certificate, for a site whose router CA
+    # keeps changing. Only the token exchange is affected: the API server is
+    # still checked against the cluster CA.
+    openshift_oauth_insecure_skip_verify: bool = False
     group_cache_seconds: int = 60
 
     # Where the built UI lives. Empty disables serving it.

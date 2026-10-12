@@ -503,6 +503,45 @@ def test_openshift_sign_in_and_group_lookup(tmp_path):
     assert seen["group_calls"] == 1
 
 
+def test_insecure_oauth_skips_verification_for_the_token_exchange_only(tmp_path):
+    calls = {"api": [], "oauth": []}
+
+    def api(request: httpx.Request) -> httpx.Response:
+        calls["api"].append(request.url.path)
+        if request.url.path == "/.well-known/oauth-authorization-server":
+            return httpx.Response(200, json={
+                "authorization_endpoint": "https://oauth.example.com/oauth/authorize",
+                "token_endpoint": "https://oauth.example.com/oauth/token",
+            })
+        return httpx.Response(200, json={"metadata": {"name": "dana"}})
+
+    def oauth(request: httpx.Request) -> httpx.Response:
+        calls["oauth"].append(request.url.path)
+        return httpx.Response(200, json={"access_token": "user-token"})
+
+    async def run():
+        provider = OpenShiftProvider(
+            api_url="https://kube", sa_dir=str(_sa_dir(tmp_path)),
+            client=httpx.AsyncClient(transport=httpx.MockTransport(api)),
+            oauth_client=httpx.AsyncClient(transport=httpx.MockTransport(oauth)),
+        )
+        username = await provider.exchange(code="c", redirect_uri="https://nav/api/v1/auth/callback")
+        await provider.close()
+        return username
+
+    assert asyncio.run(run()) == "dana"
+    assert calls["oauth"] == ["/oauth/token"]
+    assert calls["api"] == ["/.well-known/oauth-authorization-server", "/apis/user.openshift.io/v1/users/~"]
+
+    # The setting gives the provider an unverified client for the OAuth server only.
+    insecure = OpenShiftProvider(
+        api_url="https://kube", sa_dir=str(_sa_dir(tmp_path)), oauth_insecure=True,
+        client=httpx.AsyncClient(),
+    )
+    assert insecure._oauth_client is not insecure._client
+    asyncio.run(insecure.close())
+
+
 def test_sign_in_trusts_public_cas_besides_the_cluster_ca(tmp_path):
     # The OAuth server sits behind the router, whose certificate is often a public
     # one. Trusting the cluster CA alone failed the token exchange on a real cluster.
