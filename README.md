@@ -119,7 +119,8 @@ How a run behaves:
   the run fails with exit code 1 and nothing is sent.
 - **Segment lookup.** `GET <segmentsManagerUrl>/api/segments/search?q=<name>&status=Allocated`.
   The search matches parts of names, so the collector keeps only segments
-  whose `cluster_name` equals its own name. If that name exists at two sites,
+  whose `cluster_name` equals its own name — or, for a UPI segment shared by
+  several clusters (sent as a list), includes it. If that name exists at two sites,
   it picks the site whose segments contain its own node or router addresses.
   With no `segmentsManagerUrl` there is no lookup and no segments.
 - **Delivery.** Three attempts, 5 then 10 seconds apart, on a connection error

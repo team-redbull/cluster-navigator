@@ -189,6 +189,15 @@ def test_segments_are_looked_up_by_cluster_name():
     assert dict(request.url.params) == {"q": "ocp4-prod-core-site1", "status": "Allocated"}
 
 
+def test_a_shared_upi_segment_is_found_by_each_of_its_clusters():
+    # Segments Manager sends a UPI segment's cluster_name as a list.
+    rows = [sm_row(["ocp4-upi-a", "OCP4-UPI-B"], "site1", "192.10.5.0/24", "UPI"),
+            sm_row(["ocp4-upi-a-test"], "site1", "192.10.9.0/24", "UPI")]
+    for name in ("ocp4-upi-a", "ocp4-upi-b"):
+        site, segments = fetch_segments(segments_manager(rows), "https://sm", name, [])
+        assert (site, [s.cidr for s in segments]) == ("site1", ["192.10.5.0/24"])
+
+
 def test_same_name_at_two_sites_is_told_apart_by_our_own_addresses():
     rows = [sm_row("dup", "site1", "192.10.5.0/24", "UPI"), sm_row("dup", "site2", "193.51.5.0/24", "UPI")]
     site, segments = fetch_segments(segments_manager(rows), "https://sm", "dup", ["193.51.5.11"])

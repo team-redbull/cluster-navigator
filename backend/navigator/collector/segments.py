@@ -35,7 +35,7 @@ def fetch_segments(
     by_site: dict[str, list[SegmentReport]] = {}
     for raw in payload:
         # The search matches parts of names, so "ocp4-a" also returns "ocp4-a-test".
-        if str(raw.get("cluster_name") or "").strip().lower() != wanted:
+        if wanted not in _cluster_names(raw.get("cluster_name")):
             continue
         if raw.get("status", ALLOCATED) != ALLOCATED:
             continue
@@ -60,6 +60,13 @@ def fetch_segments(
         return None, []
     site = _pick_site(by_site, addresses)
     return site, sorted(by_site[site], key=lambda segment: segment.cidr)
+
+
+def _cluster_names(value: object) -> set[str]:
+    """A UPI segment may be shared, so Segments Manager sends its cluster_name
+    as a list; every other segment has a single name."""
+    names = value if isinstance(value, list) else [value]
+    return {str(name).strip().lower() for name in names if name}
 
 
 def _pick_site(by_site: dict[str, list[SegmentReport]], addresses: list[str]) -> str:
