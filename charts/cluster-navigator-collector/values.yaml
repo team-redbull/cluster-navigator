@@ -1,49 +1,37 @@
+# Only the values the chart needs, and those with a real default. Optional
+# values left out here (segmentsManagerUrl, network, clusterName,
+# ingestToken.existingSecret, tls.caBundle.configMapName, image.tag,
+# imagePullSecrets, nodeSelector, tolerations) are listed in the README,
+# under Configuration > Collector.
+
 image:
   repository: ghcr.io/team-redbull/cluster-navigator-collector
-  # Defaults to the chart's appVersion.
-  tag: ""
   pullPolicy: IfNotPresent
-imagePullSecrets: []
 
 # Base URL of the central Cluster Navigator server. Required.
 navigatorUrl: ""
 
-# The bearer token the server expects on its ingest endpoint.
+# The bearer token the server expects on its ingest endpoint. Required, unless
+# ingestToken.existingSecret names a Secret holding it under the key below.
 ingestToken:
-  # Use an existing Secret (key below) instead of letting the chart create one.
-  existingSecret: ""
   key: token
-  # Only used when existingSecret is empty. Keep it out of git.
+  # Keep it out of git.
   value: ""
-
-# Base URL of Segments Manager. The collector asks it which segments this
-# cluster holds and sends them with its report. Empty: no segment is reported.
-segmentsManagerUrl: ""
 
 # How the cluster type is decided.
 #   auto      the collector works it out from the cluster's own APIs (recommended)
 #   generic | click | mce | kubevirt   force a type, for a cluster auto gets wrong
 clusterType: auto
 
-# Overrides the cluster name. Empty means it is read from the cluster's DNS config.
-clusterName: ""
-
-# The network this cluster belongs to, for a site that runs several separate
-# networks (domains), as an air-gapped site does. Nothing in the cluster says
-# which one it is on, so it is set here. It is shown on the cluster and can be
-# filtered on. Empty: no network is shown.
-network: ""
-
 # Cron schedule, and how long one run may take.
 schedule: "*/30 * * * *"
 activeDeadlineSeconds: 300
 
-# TLS towards the server and Segments Manager. Point caBundle at a ConfigMap
-# holding the CA that signed their Route certificates, if the image's own
-# trust store lacks it.
+# TLS towards the server and Segments Manager. Set tls.caBundle.configMapName
+# to a ConfigMap holding the CA that signed their Route certificates, if the
+# image's own trust store lacks it.
 tls:
   caBundle:
-    configMapName: ""
     key: ca-bundle.crt
   insecureSkipVerify: false
 
@@ -66,5 +54,3 @@ resources:
 
 successfulJobsHistoryLimit: 1
 failedJobsHistoryLimit: 3
-nodeSelector: {}
-tolerations: []

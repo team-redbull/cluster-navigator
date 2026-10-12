@@ -1,31 +1,28 @@
+# Only the values the chart needs, and those with a real default. Optional
+# values left out here (secret.existingSecret, secret.sessionSecret,
+# secret.serviceTokens, auth.adminGroups, auth.roles, auth.roleGroups,
+# route.host, grafanaUrlTemplate, image.tag, imagePullSecrets, nodeSelector,
+# tolerations) are listed in the README, under Configuration > Server chart.
+
 image:
   repository: ghcr.io/team-redbull/cluster-navigator
-  # Defaults to the chart's appVersion.
-  tag: ""
   pullPolicy: IfNotPresent
-imagePullSecrets: []
 
 replicas: 2
 
 # ---------------------------------------------------------------------------
 # Secrets
 # ---------------------------------------------------------------------------
-# Either name a Secret you manage yourself, with the keys
-#   MONGO_URI, INGEST_TOKEN, SESSION_SECRET  (and optionally SERVICE_TOKENS)
-# or fill in the values below and let the chart create it. Under Argo CD use
-# existingSecret: Argo renders without cluster access, so a chart-generated
-# session secret would change on every sync and sign every user out.
+# Both required, unless secret.existingSecret names a Secret you manage
+# yourself, with the keys MONGO_URI, INGEST_TOKEN, SESSION_SECRET (and
+# optionally SERVICE_TOKENS). Under Argo CD use existingSecret: Argo renders
+# without cluster access, so a chart-generated session secret would change on
+# every sync and sign every user out.
 secret:
-  existingSecret: ""
   # mongodb://user:password@host:27017
   mongoUri: ""
   # The bearer token collectors send. Use a long random value.
   ingestToken: ""
-  # Signs session cookies. Empty: generated once and kept across upgrades.
-  sessionSecret: ""
-  # API tokens for machine callers, for example the workflows:
-  #   workflows: { token: "<long-random>", roles: ["admin"] }
-  serviceTokens: {}
 
 mongo:
   dbName: cluster-navigator
@@ -36,26 +33,9 @@ mongo:
 # Who may see what
 # ---------------------------------------------------------------------------
 # Users sign in with OpenShift: on the cluster's own login page, with their
-# LDAP credentials. Anyone who does not sign in is a client.
+# LDAP credentials. Anyone who does not sign in is a client. Admins come from
+# auth.adminGroups, other kinds of user from auth.roles and auth.roleGroups.
 auth:
-  # OpenShift Groups whose members are admins. On LDAP-backed clusters these
-  # Groups come from `oc adm groups sync` or the group-sync operator, not from
-  # the login itself. Check with:  oc get group <name> -o jsonpath='{.users}'
-  adminGroups: []
-
-  # More kinds of user, each with its own view. A role says which cluster
-  # types it may see and which section audiences it holds; its groups go in
-  # roleGroups. Example, a storage team that sees an extra "storage" section:
-  #
-  #   roles:
-  #     storage:
-  #       clusterTypes: ["*"]
-  #       audiences: ["public", "storage"]
-  #   roleGroups:
-  #     storage: ["storage-team"]
-  roles: {}
-  roleGroups: {}
-
   # Seconds a group lookup is cached. Removing someone from a group takes
   # their access away within this time, even if they are signed in.
   groupCacheSeconds: 60
@@ -64,15 +44,6 @@ auth:
 # A cluster whose collector has been silent this long is shown as stale.
 # Keep it at about three collector intervals.
 staleAfterSeconds: 5400
-
-# Link to Grafana on every cluster box. Placeholders: {name}, {domain}
-# (the cluster's base domain) and {clusterId}. Empty: no Grafana link.
-grafanaUrlTemplate: ""
-
-# Always created: OpenShift sign-in redirects back to it.
-route:
-  # Empty: OpenShift assigns one.
-  host: ""
 
 service:
   port: 8080
@@ -84,6 +55,3 @@ resources:
   limits:
     cpu: "1"
     memory: 512Mi
-
-nodeSelector: {}
-tolerations: []
