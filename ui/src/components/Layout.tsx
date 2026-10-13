@@ -6,6 +6,7 @@ import logoUrl from "../assets/redbull-logo.png";
 import redBullUrl from "../assets/redbull-text.png";
 import { useSession } from "../session";
 import { ALL, ALL_ICON, ALL_LABEL, TYPE_ICONS } from "../types";
+import { AppFooter } from "./AppFooter";
 
 const COLLAPSED_KEY = "cn-menu-collapsed";
 
@@ -171,7 +172,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const redBull = (height: string) => <img src={redBullUrl} alt="Red Bull" className={`${height} w-auto shrink-0`} />;
 
   return (
-    <div className="min-h-dvh lg:flex">
+    <div className="flex min-h-dvh flex-col lg:flex-row">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-surface focus:px-3 focus:py-2 focus:shadow-pop"
@@ -253,9 +254,13 @@ export function Layout({ children }: { children: ReactNode }) {
         </nav>
       </header>
 
-      <main id="main" className="min-w-0 flex-1">
-        {children}
-      </main>
+      {/* The page grows and the credit line stays at the bottom, also on a short page. */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <main id="main" className="min-w-0 flex-1">
+          {children}
+        </main>
+        <AppFooter />
+      </div>
     </div>
   );
 }
