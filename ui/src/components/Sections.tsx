@@ -146,9 +146,9 @@ export function SectionView({ section }: { section: Section }) {
         <h4 id={`section-${section.id}`} className="text-[13px] font-semibold tracking-wide text-muted uppercase">
           {section.title}
         </h4>
-        {/* Marks what a client does not get to see. The same black tag as the version. */}
+        {/* Marks what a client does not get to see. The same grey tag as the version. */}
         {restricted && (
-          <span className="rounded-[5px] bg-tag px-1.5 py-0.5 text-[11px] font-medium text-on-tag first-letter:uppercase">
+          <span className="rounded-[5px] border border-line-strong bg-tag px-1.5 py-0.5 text-[11px] font-medium text-on-tag first-letter:uppercase">
             {section.audience} only
           </span>
         )}

@@ -58,7 +58,8 @@ def _overview(d: SectionDef, c: MergedCluster, now: datetime) -> Section | None:
         KeyValue(label="Last report", value=_age(c.received_at, now)),
         KeyValue(label="Type", value=TYPE_LABELS[c.card.type]),
         KeyValue(label="Site", value=c.card.site),
-        KeyValue(label="Network", value=c.card.network),
+        # Always shown: a missing one means the collector predates the required network.
+        KeyValue(label="Network", value=c.card.network or "Not reported"),
         KeyValue(label="Parent MCE", value=c.card.mce, mono=True),
     ])
 

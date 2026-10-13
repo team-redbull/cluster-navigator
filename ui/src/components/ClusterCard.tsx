@@ -2,7 +2,7 @@ import { CircleAlert, CircleCheck, CircleX, type LucideIcon } from "lucide-react
 import type { MouseEvent } from "react";
 import type { ClusterCard as Cluster, ClusterStatus } from "../api";
 import { timeAgo } from "../hooks";
-import { GrafanaLogo, LinkButton, OpenShiftLogo, VersionBadge } from "./parts";
+import { CopyButton, GrafanaLogo, LinkButton, OpenShiftLogo, VersionBadge } from "./parts";
 
 export const DETAILS_ID = "cluster-details";
 
@@ -52,15 +52,19 @@ function Label({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Fact({ label, values }: { label: string; values: string[] }) {
+/** An address or a list of them. `copy` puts a copy button beside each one. */
+function Fact({ label, values, copy }: { label: string; values: string[]; copy?: boolean }) {
   return (
     <div className="flex gap-3">
       <dt className="w-20 shrink-0 text-subtle">{label}</dt>
       <dd className="min-w-0 font-mono text-[13px] leading-6">
         {values.length ? (
           values.map((value) => (
-            <span key={value} className="block truncate" title={value}>
-              {value}
+            <span key={value} className="flex items-center gap-1">
+              <span className="min-w-0 truncate" title={value}>
+                {value}
+              </span>
+              {copy && <CopyButton value={value} label={label.toLowerCase()} />}
             </span>
           ))
         ) : (
@@ -132,7 +136,7 @@ export function ClusterCard({ cluster, typeLabel, canSeeMce, selected, onToggle 
       </div>
 
       <dl className="mb-4 mt-3 space-y-1 text-sm">
-        <Fact label="Segment" values={cluster.segments} />
+        <Fact label="Segment" values={cluster.segments} copy />
         <Fact label="Router LB" values={cluster.routerLb} />
         {showMce && <Fact label="MCE" values={cluster.mce ? [cluster.mce] : []} />}
         {/* Only where networks are set: a site with one network has nothing to tell apart. */}

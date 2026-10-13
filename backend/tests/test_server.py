@@ -332,6 +332,15 @@ def test_client_is_not_told_the_parent_mce(client):
     assert {"label": "Parent MCE", "value": mce, "mono": True} in overview["items"]
 
 
+def test_overview_always_shows_the_network(client):
+    def network(cluster_id):
+        overview = client.get(f"/api/v1/clusters/{cluster_id}").json()["sections"][0]
+        return {i["label"]: i["value"] for i in overview["items"]}["Network"]
+
+    assert network("id-ocp4-prod-core-site1") == "prod-net"
+    assert network("id-ocp4-prod-tomer-site1-a") == "Not reported"
+
+
 def test_csv_export_follows_the_list(client):
     def table(**params):
         response = client.get("/api/v1/clusters.csv", params=params)
