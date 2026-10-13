@@ -23,6 +23,7 @@ from navigator.server import policy
 from navigator.server.app import create_app
 from navigator.server.auth import build_provider
 from navigator.server.auth.openshift import OpenShiftProvider, trust
+from navigator.server.console import ConsoleChecker
 from navigator.server.export import clusters_csv
 from navigator.server.filters import segment_matches
 from navigator.server.merge import MergedCluster, MergeOptions, merge
@@ -87,7 +88,7 @@ def merged() -> dict[str, MergedCluster]:
 
 def test_segments_and_site_come_from_the_report():
     card = merged()["ocp4-prod-core-site1"].card
-    assert (card.site, card.segments, card.status) == ("site1", ["192.10.5.0/24"], ClusterStatus.REPORTING)
+    assert (card.site, card.segments, card.status) == ("site1", ["192.10.5.0/24"], ClusterStatus.AVAILABLE)
     assert card.router_lb == ["192.10.5.100"]
 
 
@@ -100,9 +101,8 @@ def test_network_comes_from_the_report():
 def test_parent_mce_comes_from_the_mce_report():
     cluster = merged()["ocp4-prod-tomer-site1-a"]
     assert cluster.card.mce == "ocp4-prod-mce-site1-a"
-    # Version and identity providers fall back to what the MCE knows.
+    # The version falls back to what the MCE knows.
     assert cluster.card.openshift_version == "4.16.18"
-    assert cluster.identity_providers == ["corp-ldap"]
 
 
 def test_kubevirt_cluster_is_hosted_only_when_its_control_plane_is():
@@ -145,10 +145,28 @@ def test_mce_knows_which_of_its_hosted_clusters_report():
     assert merged()["ocp4-prod-mce-site1-a"].hosted_reporting == {"ocp4-prod-tomer-site1-a"}
 
 
-def test_old_report_is_stale_and_cluster_without_segment_has_no_site():
+def test_old_report_is_not_reporting_and_cluster_without_segment_has_no_site():
     cluster = merged()["ocp4-prod-kubevirt-site1-a"]
-    assert cluster.card.status == ClusterStatus.STALE
+    assert cluster.card.status == ClusterStatus.NOT_REPORTING
     assert cluster.card.site is None and cluster.card.segments == []
+
+
+CORE_CONSOLE = "https://console-openshift-console.apps.ocp4-prod-core-site1.example.com"
+
+
+def test_status_combines_the_collector_and_the_console():
+    def status(rep, console_up, age_minutes=5):
+        return merge([stored(rep, age_minutes)], now=NOW, console_up=console_up)[0].card.status
+
+    core = report("ocp4-prod-core-site1", console_url=CORE_CONSOLE)
+    assert status(core, {CORE_CONSOLE: True}) == ClusterStatus.AVAILABLE
+    assert status(core, {CORE_CONSOLE: False}) == ClusterStatus.DOWN
+    # Not checked yet, or no console URL reported: never shown down unchecked.
+    assert status(core, {}) == ClusterStatus.AVAILABLE
+    assert status(report("ocp4-prod-core-site1"), {CORE_CONSOLE: False}) == ClusterStatus.AVAILABLE
+    # A silent collector wins over whatever the console does.
+    assert status(core, {CORE_CONSOLE: True}, age_minutes=600) == ClusterStatus.NOT_REPORTING
+    assert status(core, {CORE_CONSOLE: False}, age_minutes=600) == ClusterStatus.NOT_REPORTING
 
 
 def test_grafana_link_template():
@@ -181,6 +199,8 @@ def test_segment_filter(needle, expected):
 
 
 def settings(**overrides) -> Settings:
+    # No console checks unless a test asks: they would call out to the fake hosts.
+    overrides.setdefault("console_check_interval_seconds", 0)
     return Settings(_env_file=None, ingest_token="ingest-secret", cookie_secure=False, **overrides)
 
 
@@ -344,7 +364,7 @@ def test_csv_export_follows_the_list(client):
 
 def test_csv_cells_cannot_run_as_formulas():
     card = ClusterCard(
-        id="x", name="=cmd()", type=ClusterType.GENERIC, status=ClusterStatus.REPORTING,
+        id="x", name="=cmd()", type=ClusterType.GENERIC, status=ClusterStatus.AVAILABLE,
         openshift_version="4.16.1", segments=["10.0.0.0/24", "10.0.1.0/24"], router_lb=["10.0.0.5"],
     )
     rows = list(csv.reader(io.StringIO(clusters_csv([card], include_mce=True))))
@@ -408,7 +428,7 @@ def test_list_filters_and_facets(client):
     assert names(network="lab-net") == []
     assert names(q="CORE") == ["ocp4-prod-core-site1"]
     assert names(version="4.17") == []
-    assert names(status="stale") == []
+    assert names(status="not-reporting") == []
 
     listing = client.get("/api/v1/clusters", params={"type": "click", "site": "nowhere"}).json()
     assert listing["items"] == []
@@ -585,3 +605,69 @@ def test_return_to_cannot_leave_the_site(tmp_path):
     assert safe_return_to("/click?site=site1") == "/click?site=site1"
     for bad in ("https://evil.example.com", "//evil.example.com", "/\\evil", "", None):
         assert safe_return_to(bad) == "/"
+
+
+# --- console checks ----------------------------------------------------------
+
+
+def test_console_check_verdicts():
+    def answer(request: httpx.Request) -> httpx.Response:
+        assert request.method == "HEAD"
+        host = request.url.host
+        if host == "refused":
+            raise httpx.ConnectError("refused", request=request)
+        if host == "slow":
+            raise httpx.ReadTimeout("timed out", request=request)
+        if host == "redirects":
+            return httpx.Response(302, headers={"Location": "https://oauth/login"})
+        return httpx.Response({"no-pods": 503, "forbidden": 403}.get(host, 200))
+
+    checker = ConsoleChecker(client=httpx.AsyncClient(transport=httpx.MockTransport(answer), follow_redirects=True))
+    urls = [f"https://{host}/" for host in ("ok", "redirects", "forbidden", "no-pods", "refused", "slow")]
+    urls.append("not a url")
+    up = asyncio.run(checker.sweep(urls))
+    # Any answer from the console below 500 means it is there; a 5xx or no answer means down.
+    assert up == {
+        "https://ok/": True, "https://redirects/": True, "https://forbidden/": True,
+        "https://no-pods/": False, "https://refused/": False, "https://slow/": False,
+        "not a url": False,
+    }
+
+
+def test_consoles_are_checked_concurrently():
+    in_flight = peak = 0
+
+    async def answer(request: httpx.Request) -> httpx.Response:
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        await asyncio.sleep(0.2)
+        in_flight -= 1
+        return httpx.Response(200)
+
+    checker = ConsoleChecker(client=httpx.AsyncClient(transport=httpx.MockTransport(answer)))
+
+    async def sweep():
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        await checker.sweep(f"https://console-{i}/" for i in range(20))
+        return loop.time() - started
+
+    elapsed = asyncio.run(sweep())
+    # One after another this would take 4 seconds.
+    assert peak == 20 and elapsed < 1
+
+
+def test_status_filter_and_details_follow_the_console(client):
+    navigator = client.app.state.navigator
+    navigator.consoles.up = {CORE_CONSOLE: False}
+    navigator.invalidate()
+
+    def names(status):
+        return [c["name"] for c in client.get("/api/v1/clusters", params={"status": status}).json()["items"]]
+
+    assert names("down") == ["ocp4-prod-core-site1"]
+    assert "ocp4-prod-core-site1" not in names("available")
+    assert client.get("/api/v1/clusters", params={"status": "stale"}).status_code == 422
+    overview = client.get("/api/v1/clusters/ocp4-prod-core-site1").json()["sections"][0]
+    assert {i["label"]: i["value"] for i in overview["items"]}["Status"].startswith("Down")

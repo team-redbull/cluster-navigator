@@ -3,6 +3,7 @@ import { useCallback, useState, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import type { TypeInfo } from "../api";
 import logoUrl from "../assets/redbull-logo.png";
+import redBullUrl from "../assets/redbull-text.png";
 import { useSession } from "../session";
 import { ALL, ALL_ICON, ALL_LABEL, TYPE_ICONS } from "../types";
 
@@ -166,6 +167,8 @@ export function Layout({ children }: { children: ReactNode }) {
   // The team's mark, the same file the workflows docs use. It is wider than it
   // is tall, so only the height is set and the width follows.
   const logo = <img src={logoUrl} alt="" aria-hidden className="h-[18px] w-auto shrink-0" />;
+  // The Red Bull name. Shown at every width and with the menu minimised.
+  const redBull = (height: string) => <img src={redBullUrl} alt="Red Bull" className={`${height} w-auto shrink-0`} />;
 
   return (
     <div className="min-h-dvh lg:flex">
@@ -185,14 +188,21 @@ export function Layout({ children }: { children: ReactNode }) {
       >
         {collapsed ? (
           <div className="flex flex-col items-center gap-1 pb-1 pt-4">
-            <span className="inline-flex h-10 items-center justify-center">{logo}</span>
+            <span className="inline-flex h-10 flex-col items-center justify-center gap-1.5">
+              {logo}
+              {redBull("h-[11px]")}
+            </span>
             {collapseButton}
           </div>
         ) : (
           <div className="px-3 pt-3.5">
-            <div className="flex h-11 items-center gap-2.5 pl-3">
-              {logo}
-              <span className="truncate text-[15.5px] font-semibold">Cluster Navigator</span>
+            {/* The bull, beside the Red Bull name over the app's own name. */}
+            <div className="flex items-center gap-2.5 pl-3 pt-1">
+              <img src={logoUrl} alt="" aria-hidden className="h-[26px] w-auto shrink-0" />
+              <div className="min-w-0 space-y-1">
+                {redBull("h-4")}
+                <span className="block truncate text-[13px] font-semibold text-rail-muted">Cluster Navigator</span>
+              </div>
             </div>
             <div className="mt-3 flex h-11 items-center justify-between pl-3">
               <span className="text-[12.5px] text-rail-subtle">Clusters</span>
@@ -228,9 +238,11 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Narrow screens: a top bar with the same destinations as tabs. */}
       <header className="rail sticky top-0 z-30 border-b border-rail-edge lg:hidden">
         <div className="flex h-14 items-center justify-between pl-4 pr-2">
-          <div className="flex items-center gap-2.5">
+          <div className="flex min-w-0 items-center gap-2.5">
+            {redBull("h-[18px]")}
+            <span className="h-5 w-px shrink-0 bg-rail-line" aria-hidden />
             {logo}
-            <span className="text-[15.5px] font-semibold">Cluster Navigator</span>
+            <span className="truncate text-[15.5px] font-semibold">Cluster Navigator</span>
           </div>
           <MobileAccount />
         </div>

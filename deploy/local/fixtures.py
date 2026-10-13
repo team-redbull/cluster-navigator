@@ -19,7 +19,8 @@ MCES = [
 # name, site, parent MCE, octet, version, workers, extras
 HOSTED = [
     ("ocp4-prod-tomer-site1-a", "site1", "ocp4-prod-mce-site1-a", 20, "4.16.18", 4, {}),
-    ("ocp4-prod-payments-site1-a", "site1", "ocp4-prod-mce-site1-a", 21, "4.16.18", 6, {}),
+    # Reporting, but its console does not answer.
+    ("ocp4-prod-payments-site1-a", "site1", "ocp4-prod-mce-site1-a", 21, "4.16.18", 6, {"console_down": True}),
     ("ocp4-prod-data-site1-a", "site1", "ocp4-prod-mce-site1-a", 22, "4.16.21", 8, {"gpu": 4}),
     ("ocp4-prep-tomer-site1-a", "site1", "ocp4-prep-mce-site1-a", 40, "4.17.9", 2, {}),
     ("ocp4-prep-ml-site1-a", "site1", "ocp4-prep-mce-site1-a", 41, "4.17.9", 3, {"gpu": 2}),
@@ -38,7 +39,7 @@ HOSTED = [
 # name, site, octet, version, workers, extras
 UPI = [
     ("ocp4-prod-core-site1", "site1", 60, "4.16.21", 9, {}),
-    ("ocp4-prod-dmz-site2", "site2", 60, "4.16.21", 6, {}),
+    ("ocp4-prod-dmz-site2", "site2", 60, "4.16.21", 6, {"console_down": True}),
     ("ocp4-prod-legacy-site3", "site3", 60, "4.14.42", 12, {}),
     ("ocp4-dev-lab-site3", "site3", 61, "4.18.4", 3, {}),
     # Single node, collector stopped a day ago.
@@ -52,14 +53,10 @@ UPI = [
 SITE_PREFIX = {"site1": "192.10", "site2": "193.51", "site3": "194.52"}
 
 # The network each cluster's collector chart names. A site can run several, so
-# it is not the same as the site. One cluster has none set, as a cluster whose
-# chart leaves it empty would.
-NO_NETWORK = {"ocp4-prod-legacy-site3"}
+# it is not the same as the site.
 
 
-def cluster_network(name: str) -> str | None:
-    if name in NO_NETWORK:
-        return None
+def cluster_network(name: str) -> str:
     return "lab-net" if name.startswith(("ocp4-dev-", "ocp4-prep-")) else "prod-net"
 
 

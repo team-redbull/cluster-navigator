@@ -5,8 +5,11 @@ Segments Manager with the collector's own code, and sends the report through
 the real ingest endpoint with the collector's own push code. So the local
 stack exercises the same path a real cluster does. The only shortcut is at
 the end: a few reports are
-back-dated in MongoDB to show what a stale cluster looks like, because the
-server (rightly) stamps arrival time itself.
+back-dated in MongoDB to show what a cluster that stopped reporting looks
+like, because the server (rightly) stamps arrival time itself.
+
+Console URLs point at the mock consoles (CONSOLE_URL), so the server's console
+checks find most of them up and the ones marked `console_down` down.
 """
 
 import os
@@ -38,6 +41,8 @@ TOKEN = os.environ.get("INGEST_TOKEN", "local-ingest-token")
 SEGMENTS_MANAGER_URL = os.environ.get("SEGMENTS_MANAGER_URL", "http://segments-manager:8000")
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://mongo:27017")
 DB_NAME = os.environ.get("DB_NAME", "cluster-navigator")
+# Placeholders {name} and {fqdn}. The default is what a real cluster reports.
+CONSOLE_URL = os.environ.get("CONSOLE_URL", "https://console-openshift-console.apps.{fqdn}")
 
 KUBELET = {"4.14": "v1.27.16", "4.15": "v1.28.15", "4.16": "v1.29.10", "4.17": "v1.30.7", "4.18": "v1.31.5"}
 RHCOS = {"4.14": "414.92", "4.15": "415.92", "4.16": "416.94", "4.17": "417.94", "4.18": "418.94"}
@@ -103,7 +108,7 @@ def build(
         ),
         openshift_version=version,
         kubernetes_version=f"{KUBELET[minor]}+{uuid.uuid5(uuid.NAMESPACE_DNS, version).hex[:7]}",
-        console_url=f"https://console-openshift-console.apps.{fqdn}",
+        console_url=CONSOLE_URL.format(name=name, fqdn=fqdn),
         api_url=f"https://api.{fqdn}:6443",
         router_lb=[f"{net}.100"],
         api_addresses=[] if errors else [f"{net}.101"],
@@ -191,7 +196,7 @@ def main() -> None:
                 {"_id": report.cluster_id},
                 {"$set": {"receivedAt": datetime.now(UTC) - timedelta(hours=hours)}},
             )
-    print(f"seeded {len(reports)} cluster reports ({len(aged)} back-dated to look stale)", flush=True)
+    print(f"seeded {len(reports)} cluster reports ({len(aged)} back-dated to stop reporting)", flush=True)
 
 
 if __name__ == "__main__":

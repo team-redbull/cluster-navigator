@@ -13,7 +13,8 @@ A Click Cluster always is. A KubeVirt cluster (one with OpenShift
 Virtualization installed) can be hosted or standalone.
 """
 
-from dataclasses import dataclass, field
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from navigator.models import ClusterReport, ClusterType, HostedClusterRef, SegmentReport
@@ -41,7 +42,6 @@ class MergedCluster:
     received_at: datetime
     # What this cluster's MCE says about it, when it is a hosted cluster.
     hosted_ref: HostedClusterRef | None = None
-    identity_providers: list[str] = field(default_factory=list)
     # On an MCE: which of the clusters it hosts have a collector reporting.
     hosted_reporting: frozenset[str] = frozenset()
 
@@ -67,11 +67,25 @@ def _primary(segments: list[SegmentReport]) -> list[str]:
     return primary or [s.cidr for s in segments]
 
 
+def _status(fresh: bool, console_url: str | None, console_up: Mapping[str, bool]) -> ClusterStatus:
+    """Not reporting wins: without a recent report nothing else is known.
+
+    A console that has not been checked yet (just reported, or the server just
+    started) counts as available, so a cluster is never shown down unchecked.
+    """
+    if not fresh:
+        return ClusterStatus.NOT_REPORTING
+    if console_url and console_up.get(console_url) is False:
+        return ClusterStatus.DOWN
+    return ClusterStatus.AVAILABLE
+
+
 def merge(
     reports: list[StoredReport],
     *,
     now: datetime,
     options: MergeOptions = MergeOptions(),
+    console_up: Mapping[str, bool] | None = None,
 ) -> list[MergedCluster]:
     # Which MCE hosts which cluster, according to the MCEs themselves.
     hosted: dict[str, tuple[str, HostedClusterRef]] = {}
@@ -99,7 +113,7 @@ def merge(
                     type=report.type,
                     site=report.site,
                     network=report.network,
-                    status=ClusterStatus.REPORTING if fresh else ClusterStatus.STALE,
+                    status=_status(fresh, report.console_url, console_up or {}),
                     openshift_version=report.openshift_version or (ref.version if ref else None),
                     segments=_primary(report.segments),
                     router_lb=report.router_lb,
@@ -117,9 +131,6 @@ def merge(
                 report=report,
                 received_at=stored.received_at,
                 hosted_ref=ref,
-                # A hosted cluster's identity providers are configured on its
-                # MCE, so its own OAuth object is usually empty.
-                identity_providers=report.identity_providers or (ref.identity_providers if ref else []),
                 hosted_reporting=frozenset(
                     ref.name.lower() for ref in report.hosted_clusters if ref.name.lower() in reporting
                 ),

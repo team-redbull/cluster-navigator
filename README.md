@@ -25,7 +25,7 @@ how that is enforced, and where each part lives in the code.
 - [Segments, sites and networks](#segments-sites-and-networks)
 - [Who sees what: the client and admin views](#who-sees-what-the-client-and-admin-views)
 - [Sign-in and `AUTH_PROVIDER`](#sign-in-and-auth_provider)
-- [Reporting, stale and removal](#reporting-stale-and-removal)
+- [Status: available, down, not reporting](#status-available-down-not-reporting)
 - [API](#api)
 - [The report and storage](#the-report-and-storage)
 - [Code map](#code-map)
@@ -62,12 +62,14 @@ Two deployables, one shared data contract:
 Three rules explain most of the design:
 
 1. **A cluster exists once its collector reports.** There is no registration,
-   inventory file or scan. The server never calls a cluster or Segments
-   Manager. It reads its own database and nothing else.
+   inventory file or scan. The server never calls Segments Manager, and calls
+   a cluster for one thing only: a HEAD request to its console, to show
+   whether the console is up (see [Status](#status-available-down-not-reporting)).
+   Everything else it reads from its own database.
 2. **The collector works out the facts itself**, the cluster type included,
    from the cluster's own APIs. Nobody has to set a flag correctly at install
    time. The exception is what a cluster cannot know about itself: which
-   network it is on (`network` in the chart), plus overrides for the rare
+   network it is on (`network` in the chart, required), plus overrides for the rare
    cluster the rules get wrong.
 3. **Access is decided on the server.** Data a caller may not see is removed
    before the response is built, so it never reaches the browser, an API
@@ -108,7 +110,7 @@ What it reads:
 | Type signals | Whether a `MultiClusterEngine` or a `HyperConverged` object exists, and the control plane topology |
 | Hosted clusters (MCE only) | `HostedCluster` and `NodePool` |
 | Segments and site | Segments Manager |
-| Network | The chart's `network` value, passed as `CLUSTER_NETWORK` |
+| Network | The chart's `network` value, passed as `CLUSTER_NETWORK`. Required: the chart will not install and the collector will not run without it. |
 
 How a run behaves:
 
@@ -164,17 +166,18 @@ reports into a list of `MergedCluster` objects. Each holds a `ClusterCard`
 (what the box shows) and the full report (what the details are built from).
 The result is cached for 3 seconds, so a burst of requests reads the store once.
 
-- **Status.** `reporting` when the last report arrived within
-  `STALE_AFTER_SECONDS` (default 5400, 90 minutes). Otherwise `stale`. See
-  [Reporting, stale and removal](#reporting-stale-and-removal).
+- **Status.** `not-reporting` when the last report is older than
+  `STALE_AFTER_SECONDS` (default 5400, 90 minutes). Otherwise `down` if the
+  last console check got no answer, and `available` if it did. See
+  [Status](#status-available-down-not-reporting).
 - **Parent MCE.** Every MCE's report lists the `HostedCluster` objects it runs.
   A cluster whose name is in such a list gets that MCE as its parent. The
   parent is never guessed from a naming convention.
 - **`hosted` flag.** True when the cluster has a parent MCE, is a Click
   Cluster, or reports `controlPlaneTopology: External`.
-- **Fallbacks for hosted clusters.** Version and identity providers are
-  configured on the MCE, so when a hosted cluster's own report lacks them,
-  they come from what its MCE reports about it.
+- **Fallback for hosted clusters.** The version is configured on the MCE, so
+  when a hosted cluster's own report lacks it, it comes from what its MCE
+  reports about it.
 - **Segments on the box.** Only the cluster-facing types: `UPI`, `HC`, `MCE`
   and `HUB` (`PRIMARY_SEGMENT_TYPES` in merge.py, fixed in code). If none
   match, all of them. Inventory and PXE segments appear in the details.
@@ -244,8 +247,9 @@ separate frontend deployment and no CORS.
   signing in or out clears it.
 - **Box** ([ClusterCard.tsx](ui/src/components/ClusterCard.tsx)). Name,
   version, segment, router LB, the MCE (hosted clusters, for users who may
-  know it), the network (when set), the type (on "All clusters"), Console and
-  Moby links, and a **Stale** chip.
+  know it), the network, the type (on "All clusters"), Console and
+  Moby links, and a status chip above the version: **Available**, **Down** or
+  **Not reporting**.
 - **Details** ([ClusterDetails.tsx](ui/src/components/ClusterDetails.tsx)).
   A dialog that loads `GET /clusters/{id}`. [Sections.tsx](ui/src/components/Sections.tsx)
   has one renderer per section `kind` (`kv`, `stats`, `table`, `tags`) and
@@ -309,7 +313,7 @@ rule that produced it. Some consequences of the order:
 | | Generic | Click Cluster | MCE | KubeVirt |
 |---|---|---|---|---|
 | MCE line on the box (admins only) | | Yes | | If hosted |
-| Version and identity providers fall back to the MCE's | | Yes | | If hosted |
+| Version falls back to the MCE's | | Yes | | If hosted |
 | **Hosted clusters** section (admins only) | | | Yes | |
 | Detected by | nothing else matching | external control plane | `MultiClusterEngine` | `HyperConverged` |
 
@@ -319,9 +323,9 @@ These are three different things:
 
 | | Where it comes from | Shown | Filter |
 |---|---|---|---|
-| **Segment** | Segments Manager, looked up by the collector | On the box: the cluster-facing ones (`UPI`, `HC`, `MCE`, `HUB`). In the details: all of them, with VLAN, EPG and site. | **Segment**: an IP, a CIDR, or part of one |
+| **Segment** | Segments Manager, looked up by the collector | On the box: the cluster-facing ones (`UPI`, `HC`, `MCE`, `HUB`). In the details, under Addresses and DNS: all of them. | **Segment**: an IP, a CIDR, or part of one |
 | **Site** | Segments Manager: the site the segments belong to | In the details | **Site** dropdown |
-| **Network** | The collector chart's `network` value | On the box, in the details and in the CSV, when set | **Network** dropdown |
+| **Network** | The collector chart's `network` value, required | On the box, in the details' Overview and in the CSV | **Network** dropdown |
 
 The **Segment** filter (`segment=` in the API, `segment_matches` in
 [filters.py](backend/navigator/server/filters.py)) accepts:
@@ -333,7 +337,8 @@ The **Segment** filter (`segment=` in the API, `segment_matches` in
 
 A **network** separates clusters on sites that run several separate networks
 (domains), as an air-gapped site does. The cluster cannot tell which one it is
-on, so it is set per cluster at install time:
+on, so it is set per cluster at install time, and it is required: without it
+the chart refuses to install and the collector exits without reporting.
 
 ```sh
 helm upgrade --install cluster-navigator-collector charts/cluster-navigator-collector ... \
@@ -341,8 +346,9 @@ helm upgrade --install cluster-navigator-collector charts/cluster-navigator-coll
 ```
 
 It is free text, and the filter is an exact match, so use the same spelling on
-every cluster of a network. Clusters without one show no Network line. The
-Network filter appears only once at least one cluster has a network.
+every cluster of a network. A cluster still reporting from an older collector
+that sent no network shows no Network line. The Network filter lists every
+network the listed clusters report.
 
 ## Who sees what: the client and admin views
 
@@ -375,11 +381,11 @@ Every section of the details is declared in
 
 | Section | Kind | Audience |
 |---|---|---|
-| Overview (type, site, network, parent MCE, versions, URLs, status) | `kv` | `public` |
-| Addresses and DNS | `kv` | `public` |
+| Overview (status, last report, type, site, network, parent MCE) | `kv` | `public` |
+| Versions and URLs (OpenShift and Kubernetes versions, cluster ID, base domain, API URL) | `kv` | `public` |
+| Addresses and DNS (segments, router LB, API addresses, DNS) | `kv` | `public` |
 | Capacity | `stats` | `public` |
-| Identity providers | `tags` | `public` |
-| Segments, Nodes, Storage classes | `table` | `public` |
+| Nodes, Storage classes | `table` | `public` |
 | Hosted clusters | `table` | `admin` |
 
 **One rule follows from the cluster types:** a caller who may not open MCE
@@ -554,16 +560,40 @@ To add one, for example the `redbull-ldap` checker, subclass
 and add its name to `auth_provider` in [settings.py](backend/navigator/server/settings.py).
 Roles and views do not change.
 
-## Reporting, stale and removal
+## Status: available, down, not reporting
 
-| State | Meaning |
-|---|---|
-| **Reporting** | The collector sent a report within `STALE_AFTER_SECONDS` (90 minutes by default). What is shown is current. |
-| **Stale** | No report for longer than that, which is three missed runs. What is shown is the last thing the cluster said and may be out of date. |
+Every cluster has one status, from two signals: whether its collector
+reports, and whether its console answers.
 
-A cluster goes stale when its CronJob is failing or suspended, when it cannot
-reach the server, when it is down, or when it was decommissioned. A stale
-cluster stays visible, marked **Stale**, until `REPORT_TTL_DAYS` (7) pass
+| Status | Collector | Console | Meaning |
+|---|---|---|---|
+| **Available** | Reported within `STALE_AFTER_SECONDS` (90 minutes by default) | Answers | The cluster is up and what is shown is current. |
+| **Down** | Reported within that time | Does not answer | The cluster is running, but users cannot reach its console. |
+| **Not reporting** | No report for longer than that, which is three missed runs | Not looked at | What is shown is the last thing the cluster said and may be out of date. |
+
+**Console checks** ([console.py](backend/navigator/server/console.py)). In the
+background, every `CONSOLE_CHECK_INTERVAL_SECONDS` (60), the server sends a
+HEAD request to every reported console URL. The checks run concurrently
+(asyncio, up to 50 at a time), so a sweep takes about as long as the slowest
+console, at most `CONSOLE_CHECK_TIMEOUT_SECONDS` (5), not the sum of them.
+Any answer below 500 counts as up, redirects to the login page included. A
+5xx (the router's "Application is not available" when the console pods are
+gone), a timeout or a connection error counts as down. Certificates are not
+checked, as with the OAuth server: on-site router CAs change too often to
+pin, and a HEAD request carries nothing secret. A console not checked yet,
+right after the server starts or a cluster first reports, counts as up, so a
+cluster is never shown down without a check. Results are kept in memory, and
+each replica checks on its own. A console going down or coming back is logged
+once. `CONSOLE_CHECK_INTERVAL_SECONDS=0` switches the checks off, and every
+reporting cluster is then available.
+
+The check runs from the platform cluster, so it answers "can the platform
+reach the console", which is usually what a user on the same network sees. A
+console on a network the platform cluster cannot route to shows as down.
+
+A cluster stops reporting when its CronJob is failing or suspended, when it
+cannot reach the server, when it is down, or when it was decommissioned. It
+stays visible, marked **Not reporting**, until `REPORT_TTL_DAYS` (7) pass
 without a report. Then MongoDB's TTL index deletes its report and it
 disappears, so a decommissioned cluster cleans itself up.
 
@@ -596,7 +626,7 @@ List filters, shared by `/clusters` and `/clusters.csv`:
 | `site` | The site, exactly |
 | `mce` | The parent MCE, exactly. Matches nothing for a caller who may not see MCEs. |
 | `version` | The OpenShift minor version, for example `4.16` |
-| `status` | `reporting` or `stale` |
+| `status` | `available`, `down` or `not-reporting` |
 
 ```sh
 curl -H 'Authorization: Bearer <token>' 'https://<host>/api/v1/clusters?type=click&network=prod-net'
@@ -638,6 +668,7 @@ local runs only: nothing survives a restart, and nothing expires.
 | [server/policy.py](backend/navigator/server/policy.py) | Roles, groups and the `Principal` |
 | [server/auth/](backend/navigator/server/auth) | Sign-in providers (`none`, `dev`, `openshift`) and the session cookie |
 | [server/merge.py](backend/navigator/server/merge.py) | Reports to cluster list: status, parent MCE, fallbacks |
+| [server/console.py](backend/navigator/server/console.py) | The background console checks |
 | [server/sections.py](backend/navigator/server/sections.py) | The details sections and their audiences |
 | [server/filters.py](backend/navigator/server/filters.py) | The list filters |
 | [server/views.py](backend/navigator/server/views.py) | Response models: card, details, section, `/me` |
@@ -650,12 +681,12 @@ local runs only: nothing survives a restart, and nothing expires.
 | [ui/src/components](ui/src/components) | `Layout` (menu), `ClustersPage`, `FilterBar`, `ClusterCard`, `ClusterDetails`, `Sections`, `LoginDialog` |
 | [charts/cluster-navigator](charts/cluster-navigator) | Helm chart for the server |
 | [charts/cluster-navigator-collector](charts/cluster-navigator-collector) | Helm chart for the collector |
-| [deploy/local](deploy/local) | The local stack: compose file, fake fleet, mock Segments Manager, seed |
+| [deploy/local](deploy/local) | The local stack: compose file, fake fleet, mock Segments Manager, mock consoles, seed |
 
 ## Running locally
 
 Needs Docker. Everything runs with fake data: 19 clusters across three sites
-and two networks, a stand-in Segments Manager, and two test users.
+and two networks, a stand-in Segments Manager, stand-in consoles, and two test users.
 
 ```sh
 cd deploy/local
@@ -673,8 +704,8 @@ collector's own code, and posts each report through the real ingest endpoint.
 | Admin view | **Sign in** with `admin` / `admin`. MCE and KubeVirt appear in the menu, hosted clusters show their MCE, and an MCE lists the clusters it hosts. |
 | A user in no role group | `viewer` / `viewer`. Signs in, stays a client. |
 | Cluster details | Press a cluster box. The details open in a window over the page. |
-| Filters | **Segment** takes an IP or CIDR, for example `193.51.20.5`. **Network** offers `prod-net` and `lab-net`. One cluster has no network. |
-| Stale clusters | Two clusters are back-dated to show the **Stale** chip. |
+| Filters | **Segment** takes an IP or CIDR, for example `193.51.20.5`. **Network** offers `prod-net` and `lab-net`. |
+| Statuses | Two clusters are back-dated to show **Not reporting**. Two have a console that answers 503 (the `consoles` mock), and show **Down** within 10 seconds of the stack starting. The rest are **Available**. |
 | Export | **Export CSV** downloads the clusters listed on the page, with the filters applied. |
 | API docs | <http://localhost:8100/api/docs> |
 | API as a workflow would call it | `curl -H 'Authorization: Bearer local-workflows-token' 'localhost:8100/api/v1/clusters?type=mce'` |
@@ -729,7 +760,9 @@ and maps are JSON. The full list, with defaults, is in
 | `PUBLIC_URL` | The public base URL, used to build the OAuth callback. The chart sets it from `route.host`. |
 | `OPENSHIFT_API_URL`, `OPENSHIFT_CA_FILE` | The API server, and an extra CA to trust for the OAuth route |
 | `OPENSHIFT_OAUTH_INSECURE_SKIP_VERIFY` | Do not verify the OAuth route's certificate. Default false. Only the token exchange is affected. |
-| `STALE_AFTER_SECONDS` | How long before a silent cluster is shown as stale. Default 5400. |
+| `STALE_AFTER_SECONDS` | How long before a silent cluster is shown as not reporting. Default 5400. |
+| `CONSOLE_CHECK_INTERVAL_SECONDS` | How often every console is checked. Default 60. 0 switches the checks off. |
+| `CONSOLE_CHECK_TIMEOUT_SECONDS` | How long one console check may take. Default 5. |
 | `GRAFANA_URL_TEMPLATE` | Where the **Moby** button on each box points. Placeholders `{name}`, `{domain}`, `{clusterId}`. |
 | `UI_DIR` | Where the built UI is. The image sets it. |
 
@@ -763,7 +796,7 @@ marked optional are unset by default and not listed there:
 | `navigatorUrl` | Required. The server's Route URL. |
 | `ingestToken.value` or `ingestToken.existingSecret` | Required, one of them. The ingest token, or a Secret holding it under `ingestToken.key`. |
 | `segmentsManagerUrl` | Optional. Segments Manager's URL. Unset: no segments are reported. |
-| `network` | Optional. The network this cluster belongs to. Unset: none. |
+| `network` | Required. The network this cluster belongs to, for example `lab-net`. |
 | `clusterType` | `auto` (the default), or `generic`, `click`, `mce`, `kubevirt` to force a type |
 | `clusterName` | Optional. Overrides the name read from `DNS/cluster` |
 | `schedule` | Default every 30 minutes. Keep `staleAfterSeconds` on the server at about three intervals. |
@@ -809,7 +842,7 @@ helm upgrade --install cluster-navigator-collector charts/cluster-navigator-coll
   --set navigatorUrl=https://cluster-navigator.apps.example.com \
   --set segmentsManagerUrl=https://segments-manager.apps.example.com \
   --set ingestToken.value=<the ingest token> \
-  --set network=<network name>          # only where a site has several networks
+  --set network=<network name>          # required, for example lab-net
 ```
 
 Each chart's `values.yaml` holds its required values and defaults; the
@@ -834,6 +867,11 @@ sign everyone out.
   from a node.
 - **Each cluster looks up its own segments.** Segments Manager is asked about
   one cluster, once per run, by that cluster. The server never depends on it.
+- **The server checks the consoles, not the collectors.** A console's status
+  should be minutes old, not up to a collector interval, and should say what
+  a user outside the cluster sees, not what the cluster sees of itself. A
+  collector also cannot report that it is unable to report, so "Not reporting"
+  has to be decided on the server anyway.
 - **The type is detected, not declared.** A chart parameter alone (Axiom's
   `hostedCluster`) is wrong whenever someone forgets it. A label has the same
   problem. A naming convention breaks on the first cluster that does not

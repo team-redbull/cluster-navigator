@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { api, type ClusterCard as Cluster } from "../api";
 import { useLoad } from "../hooks";
 import { useSession } from "../session";
-import { DETAILS_ID } from "./ClusterCard";
+import { DETAILS_ID, StatusChip } from "./ClusterCard";
 import { GrafanaLogo, LinkButton, OpenShiftLogo, VersionBadge } from "./parts";
 import { SectionView } from "./Sections";
 
@@ -56,6 +56,7 @@ export function ClusterDetails({ id, cluster, onClose }: Props) {
           {shown?.name ?? "Cluster"}
         </h2>
         {shown && <VersionBadge version={shown.openshiftVersion} />}
+        {shown && <StatusChip status={shown.status} lastSeen={shown.lastSeen} />}
         <div className="ml-auto flex items-center gap-2">
           {shown?.consoleUrl && (
             <LinkButton href={shown.consoleUrl} label={`OpenShift console for ${shown.name}`}>
@@ -92,13 +93,14 @@ export function ClusterDetails({ id, cluster, onClose }: Props) {
             </button>
           </div>
         ) : loading && !data ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3" aria-busy="true" aria-label="Loading details">
+          <div className="grid gap-3 lg:grid-cols-3" aria-busy="true" aria-label="Loading details">
             {[0, 1, 2].map((index) => (
               <div key={index} className="skeleton h-36" />
             ))}
           </div>
         ) : (
-          <div className="grid grid-flow-row-dense items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
+          // Boxes in one row stretch to the same height, so the top row reads as one even band.
+          <div className="grid items-stretch gap-3 lg:grid-cols-3">
             {data?.sections.map((section) => (
               <SectionView key={section.id} section={section} />
             ))}

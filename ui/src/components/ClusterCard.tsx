@@ -1,4 +1,4 @@
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, CircleCheck, CircleX, type LucideIcon } from "lucide-react";
 import type { MouseEvent } from "react";
 import type { ClusterCard as Cluster, ClusterStatus } from "../api";
 import { timeAgo } from "../hooks";
@@ -6,13 +6,39 @@ import { GrafanaLogo, LinkButton, OpenShiftLogo, VersionBadge } from "./parts";
 
 export const DETAILS_ID = "cluster-details";
 
-const STATUS_NOTE: Partial<Record<ClusterStatus, { label: string; hint: string; tone: string }>> = {
-  stale: {
-    label: "Stale",
+const STATUS_CHIP: Record<ClusterStatus, { label: string; hint: string; tone: string; Icon: LucideIcon }> = {
+  available: {
+    label: "Available",
+    hint: "The console answers and the collector reports.",
+    tone: "bg-ok-soft text-ok",
+    Icon: CircleCheck,
+  },
+  down: {
+    label: "Down",
+    hint: "The console does not answer, but the collector still reports.",
+    tone: "bg-danger-soft text-danger",
+    Icon: CircleX,
+  },
+  "not-reporting": {
+    label: "Not reporting",
     hint: "The collector has stopped reporting. Details may be out of date.",
     tone: "bg-warn-soft text-warn",
+    Icon: CircleAlert,
   },
 };
+
+export function StatusChip({ status, lastSeen }: { status: ClusterStatus; lastSeen: string | null }) {
+  const { label, hint, tone, Icon } = STATUS_CHIP[status];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-[5px] px-[7px] py-0.5 text-xs font-semibold ${tone}`}
+      title={`${hint}${lastSeen ? ` Last report ${timeAgo(lastSeen)}.` : ""}`}
+    >
+      <Icon className="size-3.5" aria-hidden />
+      {label}
+    </span>
+  );
+}
 
 /** A one-word fact, such as the cluster's type or network: plain text, not an address. */
 function Label({ label, value }: { label: string; value: string }) {
@@ -26,9 +52,9 @@ function Label({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Fact({ label, values, className = "" }: { label: string; values: string[]; className?: string }) {
+function Fact({ label, values }: { label: string; values: string[] }) {
   return (
-    <div className={`flex gap-3 ${className}`}>
+    <div className="flex gap-3">
       <dt className="w-20 shrink-0 text-subtle">{label}</dt>
       <dd className="min-w-0 font-mono text-[13px] leading-6">
         {values.length ? (
@@ -58,7 +84,6 @@ interface Props {
 
 /** The cluster box: name, version, segment, router address, parent MCE, network and links. */
 export function ClusterCard({ cluster, typeLabel, canSeeMce, selected, onToggle }: Props) {
-  const note = STATUS_NOTE[cluster.status];
   // A hosted cluster runs under an MCE, so it shows which one, to those allowed to know.
   const showMce = canSeeMce && cluster.hosted;
   const hasLinks = Boolean(cluster.consoleUrl || cluster.grafanaUrl);
@@ -77,7 +102,7 @@ export function ClusterCard({ cluster, typeLabel, canSeeMce, selected, onToggle 
       onClick={onCardClick}
       // A column that fills its grid cell: boxes in one row are the same
       // height even when one has an extra line, and the links stay at the bottom.
-      className={`relative flex h-full cursor-pointer flex-col rounded-[10px] border bg-surface px-[18px] pb-4 pt-[18px] transition-colors duration-150 ${
+      className={`flex h-full cursor-pointer flex-col rounded-[10px] border bg-surface px-[18px] pb-4 pt-[18px] transition-colors duration-150 ${
         selected ? "border-primary ring-1 ring-primary" : "border-line hover:border-subtle"
       }`}
     >
@@ -99,27 +124,15 @@ export function ClusterCard({ cluster, typeLabel, canSeeMce, selected, onToggle 
             {cluster.name}
           </button>
         </h3>
-        <VersionBadge version={cluster.openshiftVersion} />
+        {/* The status above the version, in the top right corner. Every box has both, so the grid stays even. */}
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <StatusChip status={cluster.status} lastSeen={cluster.lastSeen} />
+          <VersionBadge version={cluster.openshiftVersion} />
+        </div>
       </div>
 
-      {/*
-        A status chip sits under the version, in the top right corner. It is
-        taken out of the flow so that a box with a chip is exactly the same
-        height as one without, and the grid stays even.
-      */}
-      {note && (
-        <p
-          className={`absolute right-[18px] top-12 inline-flex items-center gap-1 rounded-[5px] px-[7px] py-0.5 text-xs font-semibold ${note.tone}`}
-          title={`${note.hint}${cluster.lastSeen ? ` Last report ${timeAgo(cluster.lastSeen)}.` : ""}`}
-        >
-          <CircleAlert className="size-3.5" aria-hidden />
-          {note.label}
-        </p>
-      )}
-
       <dl className="mb-4 mt-3 space-y-1 text-sm">
-        {/* Leave room on the first row for the chip beside it. */}
-        <Fact label="Segment" values={cluster.segments} className={note ? "pr-16" : ""} />
+        <Fact label="Segment" values={cluster.segments} />
         <Fact label="Router LB" values={cluster.routerLb} />
         {showMce && <Fact label="MCE" values={cluster.mce ? [cluster.mce] : []} />}
         {/* Only where networks are set: a site with one network has nothing to tell apart. */}

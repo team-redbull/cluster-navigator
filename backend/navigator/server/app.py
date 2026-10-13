@@ -1,9 +1,10 @@
 """The HTTP API and, when built, the UI."""
 
+import asyncio
 import hmac
 import logging
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -25,6 +26,7 @@ from navigator.server.auth import (
 )
 from navigator.server.auth.base import AuthError
 from navigator.server.auth.session import SESSION_COOKIE, STATE_COOKIE, STATE_TTL_SECONDS, safe_return_to
+from navigator.server.console import ConsoleChecker
 from navigator.server.export import clusters_csv
 from navigator.server.filters import Filters, matches, minor_version
 from navigator.server.merge import MergedCluster, MergeOptions, merge
@@ -58,10 +60,13 @@ class Selection:
 class Navigator:
     """Everything a request needs, built once at startup."""
 
-    def __init__(self, settings: Settings, store: Store, provider: AuthProvider) -> None:
+    def __init__(
+        self, settings: Settings, store: Store, provider: AuthProvider, consoles: ConsoleChecker
+    ) -> None:
         self.settings = settings
         self.store = store
         self.provider = provider
+        self.consoles = consoles
         self.roles = policy.load_roles(settings)
         self.role_groups = policy.all_groups(self.roles)
         self.sessions = SessionCodec(
@@ -83,7 +88,12 @@ class Navigator:
         now = time.monotonic()
         if self._snapshot and now - self._snapshot[0] < SNAPSHOT_TTL_SECONDS:
             return self._snapshot[1]
-        merged = merge(await self.store.list_reports(), now=datetime.now(UTC), options=self.merge_options)
+        merged = merge(
+            await self.store.list_reports(),
+            now=datetime.now(UTC),
+            options=self.merge_options,
+            console_up=self.consoles.up,
+        )
         self._snapshot = (now, merged)
         return merged
 
@@ -117,12 +127,17 @@ def create_app(
     *,
     store: Store | None = None,
     provider: AuthProvider | None = None,
+    consoles: ConsoleChecker | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     store = store or _store_for(settings)
     provider = provider or build_provider(settings)
+    consoles = consoles or ConsoleChecker(timeout=settings.console_check_timeout_seconds)
 
-    nav = Navigator(settings, store, provider)
+    nav = Navigator(settings, store, provider, consoles)
+
+    async def console_urls() -> list[str]:
+        return [c.card.console_url for c in await nav.clusters() if c.card.console_url]
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -131,7 +146,17 @@ def create_app(
         if settings.auth_provider != "none" and not nav.roles["admin"].groups:
             logger.warning("ADMIN_GROUPS is empty: nobody can sign in as admin")
         await store.init()
+        checks = None
+        if settings.console_check_interval_seconds > 0:
+            checks = asyncio.create_task(
+                consoles.run(console_urls, settings.console_check_interval_seconds, nav.invalidate)
+            )
         yield
+        if checks:
+            checks.cancel()
+            with suppress(asyncio.CancelledError):
+                await checks
+        await consoles.close()
         await provider.close()
         await store.close()
 
@@ -394,4 +419,6 @@ def _mount_ui(app: FastAPI, ui_dir: str | None) -> None:
 
 def app_factory() -> FastAPI:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    # httpx logs every request at INFO: one line per cluster per console sweep.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     return create_app()

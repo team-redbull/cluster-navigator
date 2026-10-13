@@ -7,7 +7,7 @@ Environment:
                                  segments are looked up. Empty: no segments reported.
   CLUSTER_TYPE                   auto (default), generic, click, mce or kubevirt.
   CLUSTER_NAME                   Overrides the detected cluster name.
-  CLUSTER_NETWORK                The network this cluster belongs to. Empty: none.
+  CLUSTER_NETWORK                Required. The network this cluster belongs to.
   TLS_CA_FILE                    CA bundle used to verify the server's and
                                  Segments Manager's certificates.
   TLS_INSECURE_SKIP_VERIFY       true to skip TLS verification (not for production).
@@ -48,6 +48,11 @@ def main() -> int:
     if not dry_run and (not url or not token):
         logger.error("NAVIGATOR_URL and INGEST_TOKEN (or INGEST_TOKEN_FILE) are required")
         return 2
+    # The cluster cannot tell which network it is on, and the platform filters by it.
+    network = os.environ.get("CLUSTER_NETWORK", "").strip()
+    if not network:
+        logger.error("CLUSTER_NETWORK is required: the network this cluster belongs to (network in the chart)")
+        return 2
 
     verify: bool | str = True
     if _truthy(os.environ.get("TLS_INSECURE_SKIP_VERIFY")):
@@ -62,7 +67,7 @@ def main() -> int:
             kube,
             type_override=os.environ.get("CLUSTER_TYPE"),
             name_override=os.environ.get("CLUSTER_NAME"),
-            network=os.environ.get("CLUSTER_NETWORK"),
+            network=network,
             segments_manager_url=os.environ.get("SEGMENTS_MANAGER_URL", "").strip() or None,
             segments_client=segments_client,
         ).collect()

@@ -46,9 +46,14 @@ auth:
   # cluster CA. Set false where the router certificate is trusted.
   oauthInsecureSkipVerify: true
 
-# A cluster whose collector has been silent this long is shown as stale.
+# A cluster whose collector has been silent this long is shown as not reporting.
 # Keep it at about three collector intervals.
 staleAfterSeconds: 5400
+
+# How often the server checks every cluster's console (a HEAD request to its
+# console URL). A reporting cluster whose console does not answer is shown as
+# down. 0 switches the checks off.
+consoleCheckIntervalSeconds: 60
 
 service:
   port: 8080

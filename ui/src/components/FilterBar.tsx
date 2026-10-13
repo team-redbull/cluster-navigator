@@ -17,8 +17,9 @@ interface Props {
 }
 
 const STATUSES = [
-  { value: "reporting", label: "Reporting" },
-  { value: "stale", label: "Stale" },
+  { value: "available", label: "Available" },
+  { value: "down", label: "Down" },
+  { value: "not-reporting", label: "Not reporting" },
 ];
 
 /** A text filter that waits for typing to pause before it searches. */

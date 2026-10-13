@@ -34,6 +34,7 @@
   --tag: #f2f2f2;
   --on-tag: #151515;
   --ok: #4ade80;
+  --ok-soft: #10301c;
   --warn: #f5c26b;
   --warn-soft: #3a2a0a;
   --danger: #f87171;
@@ -67,6 +68,7 @@
   --color-tag: var(--tag);
   --color-on-tag: var(--on-tag);
   --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
   --color-warn: var(--warn);
   --color-warn-soft: var(--warn-soft);
   --color-danger: var(--danger);

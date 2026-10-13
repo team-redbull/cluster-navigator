@@ -15,7 +15,7 @@ from datetime import datetime
 from navigator.models import TYPE_LABELS, ClusterType
 from navigator.server.merge import MergedCluster
 from navigator.server.policy import ADMIN, PUBLIC, Principal
-from navigator.server.views import Column, KeyValue, Section
+from navigator.server.views import ClusterStatus, Column, KeyValue, Section
 
 
 @dataclass(frozen=True)
@@ -49,21 +49,28 @@ def _kv(definition: SectionDef, items: list[KeyValue]) -> Section | None:
 def _overview(d: SectionDef, c: MergedCluster, now: datetime) -> Section | None:
     report = c.report
     status = {
-        "reporting": "Reporting",
-        "stale": "Stale: the collector has stopped reporting",
-    }[c.card.status.value]
+        ClusterStatus.AVAILABLE: "Available",
+        ClusterStatus.DOWN: "Down: the console does not answer",
+        ClusterStatus.NOT_REPORTING: "Not reporting: the collector has stopped",
+    }[c.card.status]
     return _kv(d, [
+        KeyValue(label="Status", value=status),
+        KeyValue(label="Last report", value=_age(c.received_at, now)),
         KeyValue(label="Type", value=TYPE_LABELS[c.card.type]),
         KeyValue(label="Site", value=c.card.site),
         KeyValue(label="Network", value=c.card.network),
         KeyValue(label="Parent MCE", value=c.card.mce, mono=True),
+    ])
+
+
+def _versions(d: SectionDef, c: MergedCluster, now: datetime) -> Section | None:
+    report = c.report
+    return _kv(d, [
         KeyValue(label="OpenShift version", value=c.card.openshift_version, mono=True),
         KeyValue(label="Kubernetes version", value=report.kubernetes_version, mono=True),
+        KeyValue(label="Cluster ID", value=report.cluster_id, mono=True),
         KeyValue(label="Base domain", value=report.base_domain, mono=True),
         KeyValue(label="API URL", value=report.api_url, mono=True),
-        KeyValue(label="Cluster ID", value=report.cluster_id, mono=True),
-        KeyValue(label="Status", value=status),
-        KeyValue(label="Last report", value=_age(c.received_at, now)),
     ])
 
 
@@ -71,30 +78,12 @@ def _addresses(d: SectionDef, c: MergedCluster, now: datetime) -> Section | None
     report = c.report
     dns = report.dns
     return _kv(d, [
+        KeyValue(label="Segments", value=[s.cidr for s in c.segments], mono=True),
         KeyValue(label="Router LB", value=c.card.router_lb, mono=True),
         KeyValue(label="API addresses", value=report.api_addresses, mono=True),
         KeyValue(label="DNS servers", value=dns.servers if dns else [], mono=True),
         KeyValue(label="Search domains", value=dns.search_domains if dns else [], mono=True),
     ])
-
-
-def _segments(d: SectionDef, c: MergedCluster, now: datetime) -> Section | None:
-    if not c.segments:
-        return None
-    return Section(
-        id=d.id, title=d.title, audience=d.audience, kind="table",
-        columns=[
-            Column(key="cidr", label="Segment", mono=True),
-            Column(key="type", label="Type"),
-            Column(key="vlan", label="VLAN", mono=True),
-            Column(key="epg", label="EPG", mono=True),
-            Column(key="site", label="Site"),
-        ],
-        rows=[
-            {"cidr": s.cidr, "type": s.type, "vlan": s.vlan_id, "epg": s.epg_name, "site": s.site}
-            for s in c.segments
-        ],
-    )
 
 
 def _resources(d: SectionDef, c: MergedCluster, now: datetime) -> Section | None:
@@ -159,12 +148,6 @@ def _storage(d: SectionDef, c: MergedCluster, now: datetime) -> Section | None:
     )
 
 
-def _identity(d: SectionDef, c: MergedCluster, now: datetime) -> Section | None:
-    if not c.identity_providers:
-        return None
-    return Section(id=d.id, title=d.title, audience=d.audience, kind="tags", tags=c.identity_providers)
-
-
 def _hosted_clusters(d: SectionDef, c: MergedCluster, now: datetime) -> Section | None:
     if c.card.type != ClusterType.MCE or not c.report.hosted_clusters:
         return None
@@ -192,14 +175,14 @@ def _hosted_clusters(d: SectionDef, c: MergedCluster, now: datetime) -> Section 
     )
 
 
-# Order here is the order on screen: the compact blocks first, then the tables.
+# Order here is the order on screen: three key-value blocks side by side, of
+# about the same length, then capacity, then the tables.
 SECTIONS: list[SectionDef] = [
     SectionDef("overview", "Overview", PUBLIC, _overview),
+    SectionDef("versions", "Versions and URLs", PUBLIC, _versions),
     # Not titled "Network": that is the network the cluster belongs to, in the overview.
     SectionDef("addresses", "Addresses and DNS", PUBLIC, _addresses),
     SectionDef("resources", "Capacity", PUBLIC, _resources),
-    SectionDef("identity", "Identity providers", PUBLIC, _identity),
-    SectionDef("segments", "Segments", PUBLIC, _segments),
     SectionDef("nodes", "Nodes", PUBLIC, _nodes),
     SectionDef("storage", "Storage classes", PUBLIC, _storage),
     SectionDef("hostedClusters", "Hosted clusters", ADMIN, _hosted_clusters),

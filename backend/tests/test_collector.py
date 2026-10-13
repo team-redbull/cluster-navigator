@@ -282,3 +282,18 @@ def test_push_does_not_retry_a_refusal():
     with pytest.raises(PushError, match="refused"):
         push(collect(fx.standalone()), url="https://nav", token="bad", client=client, backoff=0)
     assert len(calls) == 1
+
+
+def test_collector_will_not_run_without_a_network(monkeypatch):
+    from navigator.collector.__main__ import main
+
+    monkeypatch.setenv("NAVIGATOR_URL", "https://navigator.example.com")
+    monkeypatch.setenv("INGEST_TOKEN", "token")
+    monkeypatch.delenv("INGEST_TOKEN_FILE", raising=False)
+    for value in (None, "", "  "):
+        if value is None:
+            monkeypatch.delenv("CLUSTER_NETWORK", raising=False)
+        else:
+            monkeypatch.setenv("CLUSTER_NETWORK", value)
+        # Stops before it reads the cluster or sends anything.
+        assert main() == 2

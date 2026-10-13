@@ -21,8 +21,13 @@ class Settings(BaseSettings):
     # Collectors authenticate to the ingest endpoint with this bearer token.
     ingest_token: SecretStr
 
-    # A cluster whose last report is older than this is shown as stale.
+    # A cluster whose last report is older than this is shown as not reporting.
     stale_after_seconds: int = 5400
+
+    # How often every cluster's console is checked, and how long one check may
+    # take. 0 switches the checks off, and every reporting cluster is available.
+    console_check_interval_seconds: int = 60
+    console_check_timeout_seconds: float = 5.0
 
     # Placeholders: {name}, {domain}, {clusterId}. Empty means no Grafana link.
     grafana_url_template: str | None = None

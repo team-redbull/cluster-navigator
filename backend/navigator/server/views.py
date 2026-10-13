@@ -12,8 +12,9 @@ Scalar = str | int | float | bool | None
 
 
 class ClusterStatus(StrEnum):
-    REPORTING = "reporting"  # a collector report arrived recently
-    STALE = "stale"  # the last report is too old
+    AVAILABLE = "available"  # the collector reports and the console answers
+    DOWN = "down"  # the collector reports, but the console does not answer
+    NOT_REPORTING = "not-reporting"  # the last report is too old
 
 
 class ClusterCard(Model):

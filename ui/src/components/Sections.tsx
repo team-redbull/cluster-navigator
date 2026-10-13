@@ -30,7 +30,7 @@ function Value({ item }: { item: KeyValue }) {
     return (
       <ul className="space-y-0.5">
         {item.value.map((entry) => (
-          <li key={entry} className={`break-all ${item.mono ? "font-mono text-[13px]" : ""}`}>
+          <li key={entry} className={`[overflow-wrap:break-word] ${item.mono ? "font-mono text-[13px]" : ""}`}>
             {entry}
           </li>
         ))}
@@ -44,12 +44,13 @@ function Value({ item }: { item: KeyValue }) {
   );
 }
 
+/** Label above value, one row each: three of these sit side by side, so a value gets the box's full width. */
 function KeyValues({ section }: { section: Section }) {
   return (
-    <dl className="grid grid-cols-[minmax(7rem,auto)_1fr] gap-x-4 gap-y-2 text-sm">
+    <dl className="divide-y divide-line text-sm">
       {section.items.map((item) => (
-        <div key={item.label} className="contents">
-          <dt className="text-muted">{item.label}</dt>
+        <div key={item.label} className="py-2 first:pt-0 last:pb-0">
+          <dt className="mb-0.5 text-xs text-subtle">{item.label}</dt>
           <dd className="min-w-0">
             <Value item={item} />
           </dd>
@@ -61,7 +62,8 @@ function KeyValues({ section }: { section: Section }) {
 
 function Stats({ section }: { section: Section }) {
   return (
-    <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+    // As many tiles in a row as fit, so six or seven figures share one row on a wide screen.
+    <dl className="grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-2">
       {section.items.map((item) => (
         <div key={item.label} className="rounded-md bg-surface-2 px-3 py-2">
           <dt className="text-xs text-muted">{item.label}</dt>
@@ -74,15 +76,24 @@ function Stats({ section }: { section: Section }) {
   );
 }
 
+/**
+ * Cells wrap, so every column fits the window and there is nothing to scroll
+ * sideways. A long table scrolls inside its own box, under a header that
+ * stays in view, so its last rows and its columns are always in reach.
+ */
 function Table({ section }: { section: Section }) {
   return (
-    <div className="-mx-4 overflow-x-auto px-4">
-      <table className="w-full min-w-max border-collapse text-left text-sm">
+    <div className="max-h-[26rem] overflow-auto">
+      <table className="w-full border-separate border-spacing-0 text-left text-sm">
         <caption className="sr-only">{section.title}</caption>
         <thead>
-          <tr className="border-b border-line text-xs text-muted">
+          <tr className="text-xs text-muted">
             {section.columns.map((column) => (
-              <th key={column.key} scope="col" className="py-2 pr-6 font-medium last:pr-0">
+              <th
+                key={column.key}
+                scope="col"
+                className="sticky top-0 whitespace-nowrap border-b border-line bg-surface px-3 py-2 font-medium"
+              >
                 {column.label}
               </th>
             ))}
@@ -90,9 +101,9 @@ function Table({ section }: { section: Section }) {
         </thead>
         <tbody>
           {section.rows.map((row, index) => (
-            <tr key={index} className="border-b border-line last:border-0">
+            <tr key={index} className="hover:bg-surface-2 [&:last-child>td]:border-0">
               {section.columns.map((column) => (
-                <td key={column.key} className="py-2 pr-6 align-top tabular-nums last:pr-0">
+                <td key={column.key} className="border-b border-line px-3 py-2 align-top tabular-nums [overflow-wrap:break-word]">
                   <Cell value={row[column.key] ?? null} mono={column.mono} />
                 </td>
               ))}
@@ -122,15 +133,17 @@ export function SectionView({ section }: { section: Section }) {
   const Body = RENDERERS[section.kind];
   if (!Body) return null;
   const restricted = section.audience !== "public";
+  // Key-value blocks share a row, each one column wide. Figures and tables take the full width.
+  const wide = section.kind !== "kv";
   return (
     <section
       aria-labelledby={`section-${section.id}`}
-      className={`min-w-0 rounded-[10px] border border-line bg-surface p-4 ${
-        section.kind === "table" ? "col-span-full" : ""
+      className={`flex min-w-0 flex-col overflow-hidden rounded-[10px] border border-line bg-surface ${
+        wide ? "col-span-full" : ""
       }`}
     >
-      <div className="mb-3 flex items-center gap-2">
-        <h4 id={`section-${section.id}`} className="text-sm font-semibold">
+      <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">
+        <h4 id={`section-${section.id}`} className="text-[13px] font-semibold tracking-wide text-muted uppercase">
           {section.title}
         </h4>
         {/* Marks what a client does not get to see. The same black tag as the version. */}
@@ -140,7 +153,10 @@ export function SectionView({ section }: { section: Section }) {
           </span>
         )}
       </div>
-      <Body section={section} />
+      {/* A table runs edge to edge, its cells carry their own padding. */}
+      <div className={section.kind === "table" ? "" : "p-4"}>
+        <Body section={section} />
+      </div>
     </section>
   );
 }

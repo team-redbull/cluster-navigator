@@ -1,7 +1,8 @@
 // The API contract. Mirrors navigator/server/views.py.
 
 export type ClusterType = "generic" | "click" | "mce" | "kubevirt";
-export type ClusterStatus = "reporting" | "stale";
+/** available: console answers. down: console does not answer, the collector still reports. */
+export type ClusterStatus = "available" | "down" | "not-reporting";
 export type LoginMode = "password" | "redirect" | "disabled";
 
 /** A cluster type this user may open. Types they may not open are not sent at all. */
